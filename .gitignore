@@ -1,0 +1,14 @@
+hnswlib.egg-info/
+cmake-build-debug/
+build/
+dist/
+tmp/
+python_bindings/tests/__pycache__/
+*.pyd
+hnswlib.cpython*.so
+var/
+.idea/
+.vscode/
+.vs/
+**.DS_Store
+*.pyc
