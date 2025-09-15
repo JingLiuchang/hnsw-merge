@@ -16,6 +16,7 @@
 namespace hnswlib {
 typedef unsigned int tableint;
 typedef unsigned int linklistsizeint;
+typedef std::pair<labeltype, unsigned> localid_graphidtype;
 
 template<typename dist_t>
 class MergeHierarchicalNSW : public HierarchicalNSW<dist_t> {
@@ -74,11 +75,13 @@ class MergeHierarchicalNSW : public HierarchicalNSW<dist_t> {
     std::unordered_set<tableint> deleted_elements;  // contains internal ids of deleted elements
 
     // merge related
-    std::unordered_map<mergeidtype, labeltype> mergeid_lookup_; // mergeid -> label
-    std::unordered_map<labeltype, mergeidtype> labelid2mergeid_;
+    // std::unordered_map<mergeidtype, localid_graphidtype> mergeid_lookup_; // mergeid -> label
+    // std::unordered_map<localid_graphidtype, mergeidtype> labelid2mergeid_;
+    std::unordered_map<mergeidtype, localid_graphidtype> mergeid_lookup_; // mergeid -> label
+    std::unordered_map<localid_graphidtype, mergeidtype> labelid2mergeid_;
 
 
-    MergeHierarchicalNSW(SpaceInterface<dist_t> *s) {
+    MergeHierarchicalNSW(SpaceInterface<dist_t> *s) : labelid2mergeid_() {
     }
 
 
@@ -88,7 +91,7 @@ class MergeHierarchicalNSW : public HierarchicalNSW<dist_t> {
         bool nmslib = false,
         size_t max_elements = 0,
         bool allow_replace_deleted = false)
-        : allow_replace_deleted_(allow_replace_deleted) {
+        : allow_replace_deleted_(allow_replace_deleted), labelid2mergeid_() {
         loadIndex(location, s, max_elements);
     }
 
@@ -103,7 +106,8 @@ class MergeHierarchicalNSW : public HierarchicalNSW<dist_t> {
         : label_op_locks_(MAX_LABEL_OPERATION_LOCKS), // label: data + dim * label, 最多并行MAX_LABEL_OPERATION_LOCKS
             link_list_locks_(max_elements), // 每个向量都有一个，用于更新自己的邻居表。不仅作用于新增向量本身，而且作用于涉及的邻居节点。(反向边时)
             element_levels_(max_elements), // 每个向量的最高层layer id, 索引是内部id
-            allow_replace_deleted_(allow_replace_deleted) {
+            allow_replace_deleted_(allow_replace_deleted),
+            labelid2mergeid_(){
         max_elements_ = max_elements;
         num_deleted_ = 0;
         data_size_ = s->get_data_size();
@@ -1432,7 +1436,7 @@ class MergeHierarchicalNSW : public HierarchicalNSW<dist_t> {
     //     }
     // }
 
-    void initialize_mergeid_lookup(std::unordered_map<mergeidtype, labeltype>& mergeid_lookup_, std::unordered_map<mergeidtype, labeltype>& labelid2mergeid_, unsigned m, std::vector<HierarchicalNSW<dist_t>*> graphs) {
+    void initialize_mergeid_lookup(std::unordered_map<mergeidtype, localid_graphidtype>& mergeid_lookup_, std::unordered_map<localid_graphidtype, mergeidtype>& labelid2mergeid_, unsigned m, std::vector<HierarchicalNSW<dist_t>*> graphs) {
         size_t global_id_offset = 0;
 
         for (unsigned i = 0; i < m; ++i) {
@@ -1440,8 +1444,8 @@ class MergeHierarchicalNSW : public HierarchicalNSW<dist_t> {
 
             for (size_t local_id = 0; local_id < size_i; ++local_id) {
                 mergeidtype global_id = global_id_offset + local_id;
-                mergeid_lookup_[global_id] = static_cast<labeltype>(local_id);
-                labelid2mergeid_[static_cast<labeltype>(local_id)] = global_id;
+                mergeid_lookup_[global_id] = std::make_pair(static_cast<labeltype>(local_id), i);
+                labelid2mergeid_[std::make_pair(static_cast<labeltype>(local_id), i)] = global_id;
             }
 
             global_id_offset += size_i;
@@ -1457,7 +1461,7 @@ class MergeHierarchicalNSW : public HierarchicalNSW<dist_t> {
         }
     }
 
-    void init_merge_graph(std::vector<HierarchicalNSW<dist_t>*> graphs)
+    void init_merge_graph_level0(std::vector<HierarchicalNSW<dist_t>*> graphs)
     {
         maxlevel_ = std::numeric_limits<int>::min();
 
@@ -1468,12 +1472,34 @@ class MergeHierarchicalNSW : public HierarchicalNSW<dist_t> {
             }
         }
 
-        for (auto graph : graphs)
+        size_t graph_offset = 0;
+        for (unsigned graphid =0; graphid < graphs.size(); ++graphid)
         {
-            memcpy(data_level0_memory_, graph->data_level0_memory_, graph->max_elements_ * graph->size_data_per_element_);
+            auto graph = graphs[graphid];
+            char* data_level0_memory_copy = data_level0_memory_ + graph_offset * size_data_per_element_ + offsetLevel0_;
+            graph_offset += graph->cur_element_count;
+            for (tableint id = 0; id < graph->cur_element_count; ++id) // cur_element_count = max_element_ here
+            {
+                char* copy_element_data = data_level0_memory_copy + id * size_data_per_element_;
+                char* cur_element_data = graph->data_level0_memory_ + id * graph->size_data_per_element_ + graph->offsetLevel0_;
 
+                memset(copy_element_data, 0, size_data_per_element_);
+
+                memcpy(copy_element_data, cur_element_data, graph->size_links_level0_); // linklistsizeint 4B + maxM0 * sizeof(tableint) copy
+                memcpy(copy_element_data + offsetData_, cur_element_data + graph->offsetData_, data_size_); // vector copy
+                memcpy(copy_element_data + label_offset_, cur_element_data + graph->label_offset_, sizeof(labeltype)); // label copy
+
+                unsigned short int neighbor_count = getListCount((linklistsizeint*) data_level0_memory_copy); // 更改id
+                for (unsigned i = 0; i < neighbor_count; ++i)
+                {
+                    tableint internalid = *((tableint*)(cur_element_data + sizeof(linklistsizeint) + i * sizeof(tableint)));
+                    labeltype local_id = graph->getExternalLabel(internalid);
+                    mergeidtype global_id = labelid2mergeid_[std::make_pair(static_cast<labeltype>(local_id), graphid)];
+                    *((tableint*)(copy_element_data + sizeof(linklistsizeint) + i * sizeof(tableint))) = global_id;
+                    *((labeltype*)(copy_element_data + label_offset_)) = global_id;
+                }
+            }
         }
-
     }
 
     void merge(unsigned m, std::vector<HierarchicalNSW<dist_t>*> graphs) // 直接update MergeHierarchicalNSW
@@ -1490,7 +1516,9 @@ class MergeHierarchicalNSW : public HierarchicalNSW<dist_t> {
             return;
         }
 
+        // 初始化G
         initialize_mergeid_lookup(mergeid_lookup_, labelid2mergeid_, m, graphs);
+        init_merge_graph_level0(graphs);
 
         // merge order selection
         std::vector<std::pair<unsigned, unsigned>> merge_order;
@@ -1498,14 +1526,14 @@ class MergeHierarchicalNSW : public HierarchicalNSW<dist_t> {
 
         // start merging
         for (auto&& p : merge_order) { // pairwise merge
-            merge_into_later(graphs[p.first], graphs[p.second]);
-            merge_into_later(graphs[p.second], graphs[p.first]);
+            merge_into_later(graphs[p.first], graphs[p.second]); // first merge into second
+            merge_into_later(graphs[p.second], graphs[p.first]); // second merge into first
         }
     }
 
     void merge_into_later(HierarchicalNSW<dist_t>* G1, HierarchicalNSW<dist_t>* G2) // G1 指向 G2 的merge, 改变G1. G2 search G1.x
     {
-
+        return;
     }
 };
 }  // namespace hnswlib
