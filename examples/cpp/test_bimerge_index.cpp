@@ -4,6 +4,7 @@
 #include "../../hnswlib/hnswlib.h"
 #include <thread>
 #include "../../hnswlib/utils.h"
+#include "omp.h"
 
 // Multithreaded executor
 // The helper function copied from python_bindings/bindings.cpp (and that itself is copied from nmslib)
@@ -80,8 +81,6 @@ int main(int argc, char** argv) {
     std::string graph_index_file = std::string(argv[5]);
     std::string merged_nsg_path = std::string(argv[6]);
 
-    int num_threads = 72;       // Number of threads for operations with index
-
     // Initing index
     hnswlib::L2Space space(dim);
     hnswlib::MergeHierarchicalNSW<float>* alg_hnsw = new hnswlib::MergeHierarchicalNSW<float>(&space, max_elements, M, ef_construction);
@@ -96,7 +95,10 @@ int main(int argc, char** argv) {
         graphs[i] = hnsw;
     }
 
-    alg_hnsw->merge(graph_num, graphs);
+    int num_threads = 72;       // Number of threads for operations with index
+    omp_set_num_threads(num_threads);
+
+    alg_hnsw->mgraph_merge(graph_num, graphs);
 
     alg_hnsw->saveIndex(merged_nsg_path);
 

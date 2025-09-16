@@ -584,18 +584,19 @@ class MergeHierarchicalNSW : public HierarchicalNSW<dist_t> {
             if (isUpdate) {
                 for (size_t j = 0; j < sz_link_list_other; j++) {
                     if (data[j] == cur_c) {
-                        is_cur_c_present = true;
+                        is_cur_c_present = true; // 已有反向边
                         break;
                     }
                 }
             }
 
+            // 只有反向边不存在时才执行接下来的内容
             // If cur_c is already present in the neighboring connections of `selectedNeighbors[idx]` then no need to modify any connections or run the heuristics.
             if (!is_cur_c_present) {
-                if (sz_link_list_other < Mcurmax) {
+                if (sz_link_list_other < Mcurmax) { // 还未满，加在末尾并修改邻居数目
                     data[sz_link_list_other] = cur_c;
                     setListCount(ll_other, sz_link_list_other + 1);
-                } else {
+                } else { // 若满了则裁剪一次
                     // finding the "weakest" element to replace it with the new one
                     dist_t d_max = fstdistfunc_(getDataByInternalId(cur_c), getDataByInternalId(selectedNeighbors[idx]),
                                                 dist_func_param_);
@@ -636,6 +637,128 @@ class MergeHierarchicalNSW : public HierarchicalNSW<dist_t> {
         }
 
         return next_closest_entry_point;
+    }
+
+    void Pruning_InterInsert(
+        const void *data_point,
+        tableint cur_c,
+        std::priority_queue<std::pair<dist_t, tableint>, std::vector<std::pair<dist_t, tableint>>, CompareByFirst> &top_candidates,
+        int level) {
+
+        size_t Mcurmax = level ? maxM_ : maxM0_;
+        getNeighborsByHeuristic2(top_candidates, M_);
+        if (top_candidates.size() > M_)
+            throw std::runtime_error("Should be not be more than M_ candidates returned by the heuristic");
+
+        std::vector<tableint> selectedNeighbors;
+        selectedNeighbors.reserve(M_);
+        while (top_candidates.size() > 0) {
+            selectedNeighbors.push_back(top_candidates.top().second);
+            top_candidates.pop();
+        }
+
+        // 正向边(直接覆盖)
+        {
+            // lock only during the update
+            // because during the addition the lock for cur_c is already acquired
+            std::unique_lock <std::mutex> lock(link_list_locks_[cur_c]);
+            linklistsizeint *ll_cur;
+            if (level == 0)
+                ll_cur = get_linklist0(cur_c);
+            else
+                ll_cur = get_linklist(cur_c, level);
+
+            // if (*ll_cur && !isUpdate) {
+            //     throw std::runtime_error("The newly inserted element should have blank link list");
+            // }
+            setListCount(ll_cur, selectedNeighbors.size());
+            tableint *data = (tableint *) (ll_cur + 1);
+            for (size_t idx = 0; idx < selectedNeighbors.size(); idx++) {
+                // if (data[idx] && !isUpdate)
+                //     throw std::runtime_error("Possible memory corruption");
+                if (level > element_levels_[selectedNeighbors[idx]])
+                    throw std::runtime_error("Trying to make a link on a non-existent level");
+
+                data[idx] = selectedNeighbors[idx];
+            }
+        }
+
+        // 反向边
+        for (size_t idx = 0; idx < selectedNeighbors.size(); idx++) {
+            std::unique_lock <std::mutex> lock(link_list_locks_[selectedNeighbors[idx]]);
+
+            linklistsizeint *ll_other;
+            if (level == 0)
+                ll_other = get_linklist0(selectedNeighbors[idx]);
+            else
+                ll_other = get_linklist(selectedNeighbors[idx], level);
+
+            size_t sz_link_list_other = getListCount(ll_other);
+
+            if (sz_link_list_other > Mcurmax)
+                throw std::runtime_error("Bad value of sz_link_list_other");
+            if (selectedNeighbors[idx] == cur_c)
+                throw std::runtime_error("Trying to connect an element to itself");
+            if (level > element_levels_[selectedNeighbors[idx]])
+                throw std::runtime_error("Trying to make a link on a non-existent level");
+
+            tableint *data = (tableint *) (ll_other + 1);
+
+            bool is_cur_c_present = false;
+            for (size_t j = 0; j < sz_link_list_other; j++) {
+                if (data[j] == cur_c) {
+                    is_cur_c_present = true; // 已有反向边
+                    break;
+                }
+            }
+
+
+            // 只有反向边不存在时才执行接下来的内容
+            // If cur_c is already present in the neighboring connections of `selectedNeighbors[idx]` then no need to modify any connections or run the heuristics.
+            if (!is_cur_c_present) {
+                if (sz_link_list_other < Mcurmax) { // 还未满，加在末尾并修改邻居数目
+                    data[sz_link_list_other] = cur_c;
+                    setListCount(ll_other, sz_link_list_other + 1);
+                } else { // 若满了则裁剪一次
+                    // finding the "weakest" element to replace it with the new one
+                    dist_t d_max = fstdistfunc_(getDataByInternalId(cur_c), getDataByInternalId(selectedNeighbors[idx]),
+                                                dist_func_param_);
+                    // Heuristic:
+                    std::priority_queue<std::pair<dist_t, tableint>, std::vector<std::pair<dist_t, tableint>>, CompareByFirst> candidates;
+                    candidates.emplace(d_max, cur_c);
+
+                    for (size_t j = 0; j < sz_link_list_other; j++) {
+                        candidates.emplace(
+                                fstdistfunc_(getDataByInternalId(data[j]), getDataByInternalId(selectedNeighbors[idx]),
+                                                dist_func_param_), data[j]);
+                    }
+
+                    getNeighborsByHeuristic2(candidates, Mcurmax);
+
+                    int indx = 0;
+                    while (candidates.size() > 0) {
+                        data[indx] = candidates.top().second;
+                        candidates.pop();
+                        indx++;
+                    }
+
+                    setListCount(ll_other, indx);
+                    // Nearest K:
+                    /*int indx = -1;
+                    for (int j = 0; j < sz_link_list_other; j++) {
+                        dist_t d = fstdistfunc_(getDataByInternalId(data[j]), getDataByInternalId(rez[idx]), dist_func_param_);
+                        if (d > d_max) {
+                            indx = j;
+                            d_max = d;
+                        }
+                    }
+                    if (indx >= 0) {
+                        data[indx] = cur_c;
+                    } */
+                }
+            }
+        }
+
     }
 
 
@@ -1429,16 +1552,6 @@ class MergeHierarchicalNSW : public HierarchicalNSW<dist_t> {
         return globalid_offset[graph_id] + local_id;
     }
 
-    // void initialize_mergeid_lookup(std::unordered_map<mergeidtype, labeltype>& mergeid_lookup_, unsigned m, size_t size) { // m个图, 每个图size个点
-    //     for (int i = 0; i < m; ++i) {
-    //         for (int j = 0; j < size; ++j) {
-    //             mergeidtype global_id = i * size + j;
-    //             labeltype local_id = j;
-    //             mergeid_lookup_[global_id] = local_id;
-    //         }
-    //     }
-    // }
-
     void initialize_mergeid_lookup(std::vector<HierarchicalNSW<dist_t>*> graphs) {
         size_t global_id_offset = 0;
         unsigned m = graphs.size();
@@ -1465,7 +1578,7 @@ class MergeHierarchicalNSW : public HierarchicalNSW<dist_t> {
         }
     }
 
-    void init_merge_graph_level0(std::vector<HierarchicalNSW<dist_t>*> graphs)
+    void init_merge_graph_level0(std::vector<HierarchicalNSW<dist_t>*> graphs) // 初始化合并G的level0
     {
         cur_element_count = max_elements_;
 
@@ -1488,26 +1601,20 @@ class MergeHierarchicalNSW : public HierarchicalNSW<dist_t> {
             auto graph = graphs[graphid];
             char* data_level0_memory_copy = data_level0_memory_ + graph_offset * size_data_per_element_ + offsetLevel0_;
             graph_offset += graph->cur_element_count;
-            for (tableint id = 0; id < graph->cur_element_count; ++id) // cur_element_count = max_element_ here
+            for (tableint id = 0; id < graph->cur_element_count; ++id)
             {
                 char* copy_element_data = data_level0_memory_copy + id * size_data_per_element_;
                 char* cur_element_data = graph->data_level0_memory_ + id * graph->size_data_per_element_ + graph->offsetLevel0_;
 
                 memset(copy_element_data, 0, size_data_per_element_);
 
+                // 复制数据
                 memcpy(copy_element_data, cur_element_data, graph->size_links_level0_); // linklistsizeint 4B + maxM0 * sizeof(tableint) copy
                 memcpy(copy_element_data + offsetData_, cur_element_data + graph->offsetData_, data_size_); // vector copy
                 memcpy(copy_element_data + label_offset_, cur_element_data + graph->label_offset_, sizeof(labeltype)); // label copy
 
-                // DEBUG
-                tableint* linklists = (tableint*)(copy_element_data + sizeof(linklistsizeint));
-                unsigned short int list_count = *copy_element_data;
-                float* veccopy = (float*)(copy_element_data + offsetData_);
-                float* veclocal = (float*)(cur_element_data + graph->offsetData_);
-                labeltype* labelcopy = (labeltype*)(copy_element_data + label_offset_);
-                labeltype* labellocal = (labeltype*)(cur_element_data + graph->label_offset_);
-
-                unsigned short int neighbor_count = getListCount((linklistsizeint*) copy_element_data); // 更改linklist id
+                // 映射id
+                unsigned short int neighbor_count = getListCount((linklistsizeint*) copy_element_data);
                 for (unsigned i = 0; i < neighbor_count; ++i)
                 {
                     tableint internalid = *((tableint*)(cur_element_data + sizeof(linklistsizeint) + i * sizeof(tableint)));
@@ -1521,7 +1628,7 @@ class MergeHierarchicalNSW : public HierarchicalNSW<dist_t> {
         }
     }
 
-    void merge(unsigned m, std::vector<HierarchicalNSW<dist_t>*> graphs) // 直接update MergeHierarchicalNSW
+    void mgraph_merge(unsigned m, std::vector<HierarchicalNSW<dist_t>*> graphs) // 直接update MergeHierarchicalNSW
     {
         size_t num_element = 0;
         for (unsigned i = 0; i < m; ++i)
@@ -1545,12 +1652,45 @@ class MergeHierarchicalNSW : public HierarchicalNSW<dist_t> {
 
         // start merging
         for (auto&& p : merge_order) { // pairwise merge
-            merge_into_later(graphs[p.first], graphs[p.second]); // first merge into second
-            merge_into_later(graphs[p.second], graphs[p.first]); // second merge into first
+            NGM_merge_into_later(graphs, p.first, p.second, ef_construction_); // first merge into second
+            NGM_merge_into_later(graphs, p.second, p.first, ef_construction_); // second merge into first
         }
     }
 
-    void merge_into_later(HierarchicalNSW<dist_t>* G1, HierarchicalNSW<dist_t>* G2) // G1 指向 G2 的merge, 改变G1. G2 search G1.x
+    // G1 into G2 的merge, 改变G1. G2 search G1.x
+    void NGM_merge_into_later(std::vector<HierarchicalNSW<dist_t>*> graphs, unsigned G1_id, unsigned G2_id, size_t ef_merge)
+    {
+        HierarchicalNSW<dist_t>* G1 = graphs[G1_id];
+        HierarchicalNSW<dist_t>* G2 = graphs[G2_id];
+#pragma omp parallel for  schedule(dynamic, 72)
+        for (tableint internal_id = 0; internal_id < G1->cur_element_count; ++internal_id)
+        {
+            float* data_point = (float*) G1->getDataByInternalId(internal_id);
+            std::priority_queue<std::pair<dist_t, tableint>, std::vector<std::pair<dist_t, tableint>>, HierarchicalNSW<float>::CompareByFirst> temp_candidates = G2->Global_merge(data_point, ef_merge);
+            std::priority_queue<std::pair<dist_t, tableint>, std::vector<std::pair<dist_t, tableint>>, CompareByFirst> top_candidates;
+
+            // pruning candidateset 和 更新目标都转化为合并图G中的internal id
+            while (!temp_candidates.empty()) {
+                auto candidate = temp_candidates.top();
+                temp_candidates.pop();
+                top_candidates.push({candidate.first, candidate.second + globalid_offset[G2_id]});
+            }
+            tableint merged_internal_id = internal_id + globalid_offset[G1_id];
+
+            // top_candidates中加入原本邻居
+            linklistsizeint* cur_element_data = get_linklist0(merged_internal_id);
+            unsigned short int neighbor_count = getListCount(cur_element_data);
+            for (unsigned i = 0; i < neighbor_count; ++i)
+            {
+                tableint neighbor_internalid = *((tableint*)(cur_element_data + 1) + i);
+                top_candidates.push({fstdistfunc_(data_point, getDataByInternalId(neighbor_internalid), dist_func_param_), neighbor_internalid});
+            }
+
+            Pruning_InterInsert(data_point, merged_internal_id, top_candidates, 0); // 更新merged_internal_id的邻居并添加反向边
+        }
+    }
+
+    void IGTM_merge_into_later(HierarchicalNSW<dist_t>* G1, HierarchicalNSW<dist_t>* G2)
     {
         return;
     }

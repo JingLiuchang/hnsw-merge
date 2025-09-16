@@ -509,7 +509,7 @@ class HierarchicalNSW : public AlgorithmInterface<dist_t> {
         std::priority_queue<std::pair<dist_t, tableint>, std::vector<std::pair<dist_t, tableint>>, CompareByFirst> &top_candidates,
         int level,
         bool isUpdate) {
-        size_t Mcurmax = level ? maxM_ : maxM0_;
+        size_t Mcurmax = level ? maxM_ : maxM0_; // 当前层的M
         getNeighborsByHeuristic2(top_candidates, M_);//pruning
         if (top_candidates.size() > M_)
             throw std::runtime_error("Should be not be more than M_ candidates returned by the heuristic");
@@ -523,7 +523,7 @@ class HierarchicalNSW : public AlgorithmInterface<dist_t> {
 
         tableint next_closest_entry_point = selectedNeighbors.back();
 
-        {
+        {// 更新 new element 的邻居表
             // lock only during the update
             // because during the addition the lock for cur_c is already acquired
             std::unique_lock <std::mutex> lock(link_list_locks_[cur_c], std::defer_lock);
@@ -540,10 +540,10 @@ class HierarchicalNSW : public AlgorithmInterface<dist_t> {
                 throw std::runtime_error("The newly inserted element should have blank link list");
             }
             setListCount(ll_cur, selectedNeighbors.size());
-            tableint *data = (tableint *) (ll_cur + 1);
+            tableint *data = (tableint *) (ll_cur + 1); // linklist指针
             for (size_t idx = 0; idx < selectedNeighbors.size(); idx++) {
                 if (data[idx] && !isUpdate)
-                    throw std::runtime_error("Possible memory corruption");
+                    throw std::runtime_error("Possible memory corruption"); // 非空的linklist
                 if (level > element_levels_[selectedNeighbors[idx]])
                     throw std::runtime_error("Trying to make a link on a non-existent level");
 
@@ -551,6 +551,7 @@ class HierarchicalNSW : public AlgorithmInterface<dist_t> {
             }
         }
 
+        // 加反向边
         for (size_t idx = 0; idx < selectedNeighbors.size(); idx++) {
             std::unique_lock <std::mutex> lock(link_list_locks_[selectedNeighbors[idx]]);
 
@@ -1272,125 +1273,56 @@ class HierarchicalNSW : public AlgorithmInterface<dist_t> {
         return cur_c;
     }
 
-    // tableint merge_addPoint(const void *data_point, labeltype label, int level) {
-    //     tableint cur_c = 0; // 内部id
-    //     // {
-    //     //     // Checking if the element with the same label already exists
-    //     //     // if so, updating it *instead* of creating a new element.
-    //     //     std::unique_lock <std::mutex> lock_table(label_lookup_lock);
-    //     //     auto search = label_lookup_.find(label);
-    //     //     if (search != label_lookup_.end()) { // the element with the same label already exists // update
-    //     //         tableint existingInternalId = search->second;
-    //     //         if (allow_replace_deleted_) {
-    //     //             if (isMarkedDeleted(existingInternalId)) {
-    //     //                 throw std::runtime_error("Can't use addPoint to update deleted elements if replacement of deleted elements is enabled.");
-    //     //             }
-    //     //         }
-    //     //         lock_table.unlock();
-    //     //
-    //     //         if (isMarkedDeleted(existingInternalId)) {
-    //     //             unmarkDeletedInternal(existingInternalId);
-    //     //         }
-    //     //         updatePoint(data_point, existingInternalId, 1.0);
-    //     //
-    //     //         return existingInternalId;
-    //     //     }
-    //     //
-    //     //     if (cur_element_count >= max_elements_) {
-    //     //         throw std::runtime_error("The number of elements exceeds the specified limit");
-    //     //     }
-    //     //
-    //     //     cur_c = cur_element_count;
-    //     //     cur_element_count++;
-    //     //     label_lookup_[label] = cur_c;
-    //     // }
-    //
-    //     // 对于新插入的点:
-    //
-    //     // std::unique_lock <std::mutex> lock_el(link_list_locks_[cur_c]); // link_list_locks_[cur_c] 表示要锁定的互斥锁, 每个点一把锁, 只能锁住自己的
-    //     // int curlevel = getRandomLevel(mult_);
-    //     // if (level > 0) // 若有指定level
-    //     //     curlevel = level;
-    //
-    //     // element_levels_[cur_c] = curlevel; // 记录cur_c的最高level
-    //
-    //     // std::unique_lock <std::mutex> templock(global); // 只有global这一把锁, 保证只有一个线程可以更改maxlevel
-    //     // int maxlevelcopy = maxlevel_;
-    //     // if (curlevel <= maxlevelcopy)
-    //     //     templock.unlock(); // 及时释放, maxlevelcopy记录当前观察到的maxlevel, 若大于maxlevel为啥不在这里更新后立即释放, 这里不释放是否会阻塞其他线程?
-    //
-    //     tableint currObj = enterpoint_node_; // 没有点时为-1
-    //     tableint enterpoint_copy = enterpoint_node_;
-    //
-    //     // memset(data_level0_memory_ + cur_c * size_data_per_element_ + offsetLevel0_, 0, size_data_per_element_); // 初始化cur_c的一条数据(邻居数、邻居id列表、向量数据、label)
-    //
-    //     // Initialisation of the data and label
-    //     memcpy(getExternalLabeLp(cur_c), &label, sizeof(labeltype)); // label = external id = partition id, 写到cur_c的数据的label位上
-    //     memcpy(getDataByInternalId(cur_c), data_point, data_size_); // internal id仅代表在level0的图索引内存表示中的行号, 写入cur_c的数据的向量位
-    //
-    //     if (curlevel) { // 非0代表不止存在于level0, linklist中只存储level>0的邻居, 第0层的单独自己存储在data_level0_memory_
-    //         linkLists_[cur_c] = (char *) malloc(size_links_per_element_ * curlevel + 1); // cur_c有curlevel层, 每层size_links_per_element_字节, 多一个字节存储curlevel?
-    //         if (linkLists_[cur_c] == nullptr)
-    //             throw std::runtime_error("Not enough memory: addPoint failed to allocate linklist");
-    //         memset(linkLists_[cur_c], 0, size_links_per_element_ * curlevel + 1);
-    //     }
-    //
-    //     if ((signed)currObj != -1) { // 非第一个插入点, 向已有index插入点
-    //         if (curlevel < maxlevelcopy) { // 非最高层, 先greedy search找到curlevel的入口点
-    //             dist_t curdist = fstdistfunc_(data_point, getDataByInternalId(currObj), dist_func_param_);
-    //             for (int level = maxlevelcopy; level > curlevel; level--) { // 每层 greedy search
-    //                 bool changed = true;
-    //                 while (changed) {
-    //                     changed = false;
-    //                     unsigned int *data;
-    //                     std::unique_lock <std::mutex> lock(link_list_locks_[currObj]);
-    //                     data = get_linklist(currObj, level); // data 是 currObj在level层的邻居列表
-    //                     int size = getListCount(data); // 邻居数目
-    //
-    //                     tableint *datal = (tableint *) (data + 1); // +1是跳过开头4B的linklistsizeint, 这里面是邻居数目和增删指示位, linklistsizeint = tableint = unsigned int
-    //                     for (int i = 0; i < size; i++) {
-    //                         tableint cand = datal[i]; // cand: 邻居internal id
-    //                         if (cand < 0 || cand > max_elements_)
-    //                             throw std::runtime_error("cand error");
-    //                         dist_t d = fstdistfunc_(data_point, getDataByInternalId(cand), dist_func_param_);
-    //                         if (d < curdist) {
-    //                             curdist = d;
-    //                             currObj = cand;
-    //                             changed = true;
-    //                         }
-    //                     }
-    //                 }
-    //             }
-    //         }
-    //
-    //         // 给以下各层插入这个新点
-    //         bool epDeleted = isMarkedDeleted(enterpoint_copy);
-    //         for (int level = std::min(curlevel, maxlevelcopy); level >= 0; level--) {
-    //             if (level > maxlevelcopy || level < 0)  // possible?
-    //                 throw std::runtime_error("Level error");
-    //
-    //             std::priority_queue<std::pair<dist_t, tableint>, std::vector<std::pair<dist_t, tableint>>, CompareByFirst> top_candidates = searchBaseLayer(
-    //                     currObj, data_point, level);
-    //             if (epDeleted) {
-    //                 top_candidates.emplace(fstdistfunc_(data_point, getDataByInternalId(enterpoint_copy), dist_func_param_), enterpoint_copy);
-    //                 if (top_candidates.size() > ef_construction_)
-    //                     top_candidates.pop();
-    //             }
-    //             currObj = mutuallyConnectNewElement(data_point, cur_c, top_candidates, level, false); // pruning and connect
-    //         }
-    //     } else { // 第一个插入点
-    //         // Do nothing for the first element, 内存表示也已经完成(第一个点就是全0)
-    //         enterpoint_node_ = 0;
-    //         maxlevel_ = curlevel;
-    //     }
-    //
-    //     // Releasing lock for the maximum level
-    //     if (curlevel > maxlevelcopy) {
-    //         enterpoint_node_ = cur_c; // ep总是最高层的点
-    //         maxlevel_ = curlevel;
-    //     }
-    //     return cur_c;
-    // }
+    std::priority_queue<std::pair<dist_t, tableint>, std::vector<std::pair<dist_t, tableint>>, CompareByFirst>
+    Global_merge(const void *query_data, size_t ef_merge, BaseFilterFunctor* isIdAllowed = nullptr) const {
+        std::priority_queue<std::pair<dist_t, labeltype >> result;
+        if (cur_element_count == 0)
+        {
+            throw std::runtime_error("can't merge an empty graph");
+        }
+
+        tableint currObj = enterpoint_node_;
+        dist_t curdist = fstdistfunc_(query_data, getDataByInternalId(enterpoint_node_), dist_func_param_);
+
+        for (int level = maxlevel_; level > 0; level--) {
+            bool changed = true;
+            while (changed) {
+                changed = false;
+                unsigned int *data;
+
+                data = (unsigned int *) get_linklist(currObj, level);
+                int size = getListCount(data);
+                metric_hops++;
+                metric_distance_computations+=size;
+
+                tableint *datal = (tableint *) (data + 1);
+                for (int i = 0; i < size; i++) {
+                    tableint cand = datal[i];
+                    if (cand < 0 || cand > max_elements_)
+                        throw std::runtime_error("cand error");
+                    dist_t d = fstdistfunc_(query_data, getDataByInternalId(cand), dist_func_param_);
+
+                    if (d < curdist) {
+                        curdist = d;
+                        currObj = cand;
+                        changed = true;
+                    }
+                }
+            }
+        }
+
+        std::priority_queue<std::pair<dist_t, tableint>, std::vector<std::pair<dist_t, tableint>>, CompareByFirst> top_candidates;
+        bool bare_bone_search = !num_deleted_ && !isIdAllowed;
+        if (bare_bone_search) {
+            top_candidates = searchBaseLayerST<true>(
+                    currObj, query_data, std::max(ef_, ef_merge), isIdAllowed);
+        } else {
+            top_candidates = searchBaseLayerST<false>(
+                    currObj, query_data, std::max(ef_, ef_merge), isIdAllowed);
+        }
+
+        return top_candidates;
+    }
 
 
     std::priority_queue<std::pair<dist_t, labeltype >>
