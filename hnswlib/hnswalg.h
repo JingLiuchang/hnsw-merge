@@ -305,7 +305,7 @@ class HierarchicalNSW : public AlgorithmInterface<dist_t> {
     }
 
 
-    // bare_bone_search means there is no check for deletions and stop condition is ignored in return of extra performance
+    // bare_bone_search = True means there is no check for deletions and stop condition is ignored in return of extra performance
     template <bool bare_bone_search = true, bool collect_metrics = false>
     std::priority_queue<std::pair<dist_t, tableint>, std::vector<std::pair<dist_t, tableint>>, CompareByFirst>
     searchBaseLayerST(
@@ -338,6 +338,165 @@ class HierarchicalNSW : public AlgorithmInterface<dist_t> {
         }
 
         visited_array[ep_id] = visited_array_tag;
+
+        while (!candidate_set.empty()) {
+            std::pair<dist_t, tableint> current_node_pair = candidate_set.top(); // 当前最近点
+            dist_t candidate_dist = -current_node_pair.first;
+
+            bool flag_stop_search;
+            if (bare_bone_search) {
+                flag_stop_search = candidate_dist > lowerBound; // 最近点距离大于当前下界，停止搜索
+            } else {
+                if (stop_condition) {
+                    flag_stop_search = stop_condition->should_stop_search(candidate_dist, lowerBound);
+                } else {
+                    flag_stop_search = candidate_dist > lowerBound && top_candidates.size() == ef;
+                }
+            }
+            if (flag_stop_search) {
+                break;
+            }
+            candidate_set.pop(); // 若继续搜索，弹出当前最近点
+
+            tableint current_node_id = current_node_pair.second;
+            int *data = (int *) get_linklist0(current_node_id);
+            size_t size = getListCount((linklistsizeint*)data);
+//                bool cur_node_deleted = isMarkedDeleted(current_node_id);
+            if (collect_metrics) {
+                metric_hops++;
+                metric_distance_computations+=size;
+            }
+
+#ifdef USE_SSE
+            _mm_prefetch((char *) (visited_array + *(data + 1)), _MM_HINT_T0);
+            _mm_prefetch((char *) (visited_array + *(data + 1) + 64), _MM_HINT_T0);
+            _mm_prefetch(data_level0_memory_ + (*(data + 1)) * size_data_per_element_ + offsetData_, _MM_HINT_T0);
+            _mm_prefetch((char *) (data + 2), _MM_HINT_T0);
+#endif
+
+            for (size_t j = 1; j <= size; j++) { // 遍历当前节点的所有邻居
+                int candidate_id = *(data + j);
+//                    if (candidate_id == 0) continue;
+#ifdef USE_SSE
+                _mm_prefetch((char *) (visited_array + *(data + j + 1)), _MM_HINT_T0);
+                _mm_prefetch(data_level0_memory_ + (*(data + j + 1)) * size_data_per_element_ + offsetData_,
+                                _MM_HINT_T0);  ////////////
+#endif
+                if (!(visited_array[candidate_id] == visited_array_tag)) { // 该邻居未访问过
+                    visited_array[candidate_id] = visited_array_tag;
+
+                    char *currObj1 = (getDataByInternalId(candidate_id));
+                    dist_t dist = fstdistfunc_(data_point, currObj1, dist_func_param_);
+
+                    bool flag_consider_candidate;
+                    if (!bare_bone_search && stop_condition) {
+                        flag_consider_candidate = stop_condition->should_consider_candidate(dist, lowerBound);
+                    } else {
+                        flag_consider_candidate = top_candidates.size() < ef || lowerBound > dist; // 距离小于下界，或者top_candidates未满都考虑插入此点
+                    }
+
+                    if (flag_consider_candidate) {
+                        candidate_set.emplace(-dist, candidate_id);
+#ifdef USE_SSE
+                        _mm_prefetch(data_level0_memory_ + candidate_set.top().second * size_data_per_element_ +
+                                        offsetLevel0_,  ///////////
+                                        _MM_HINT_T0);  ////////////////////////
+#endif
+
+                        if (bare_bone_search || 
+                            (!isMarkedDeleted(candidate_id) && ((!isIdAllowed) || (*isIdAllowed)(getExternalLabel(candidate_id))))) {
+                            top_candidates.emplace(dist, candidate_id);
+                            if (!bare_bone_search && stop_condition) {
+                                stop_condition->add_point_to_result(getExternalLabel(candidate_id), currObj1, dist);
+                            }
+                        }
+
+                        bool flag_remove_extra = false;
+                        if (!bare_bone_search && stop_condition) {
+                            flag_remove_extra = stop_condition->should_remove_extra();
+                        } else {
+                            flag_remove_extra = top_candidates.size() > ef;
+                        }
+                        while (flag_remove_extra) {
+                            tableint id = top_candidates.top().second;
+                            top_candidates.pop();
+                            if (!bare_bone_search && stop_condition) {
+                                stop_condition->remove_point_from_result(getExternalLabel(id), getDataByInternalId(id), dist);
+                                flag_remove_extra = stop_condition->should_remove_extra();
+                            } else {
+                                flag_remove_extra = top_candidates.size() > ef;
+                            }
+                        }
+
+                        if (!top_candidates.empty())
+                            lowerBound = top_candidates.top().first;
+                    }
+                }
+            }
+        }
+
+        visited_list_pool_->releaseVisitedList(vl);
+        return top_candidates;
+    }
+
+    // local merge
+    template <bool bare_bone_search = true, bool collect_metrics = false>
+    std::priority_queue<std::pair<dist_t, tableint>, std::vector<std::pair<dist_t, tableint>>, CompareByFirst>
+    searchBaseLayerST(
+        const std::vector<tableint>& entry_points,
+        const void *data_point,
+        size_t ef,
+        BaseFilterFunctor* isIdAllowed = nullptr,
+        BaseSearchStopCondition<dist_t>* stop_condition = nullptr) const {
+        VisitedList *vl = visited_list_pool_->getFreeVisitedList();
+        vl_type *visited_array = vl->mass;
+        vl_type visited_array_tag = vl->curV;
+
+        std::priority_queue<std::pair<dist_t, tableint>, std::vector<std::pair<dist_t, tableint>>, CompareByFirst> top_candidates;
+        std::priority_queue<std::pair<dist_t, tableint>, std::vector<std::pair<dist_t, tableint>>, CompareByFirst> candidate_set;
+
+        dist_t lowerBound = std::numeric_limits<dist_t>::max();
+
+        // 初始化所有入口点
+        for (tableint ep_id : entry_points) {
+            if (visited_array[ep_id] == visited_array_tag) {
+                continue;  // 跳过重复的入口点
+            }
+
+            if (bare_bone_search ||
+                (!isMarkedDeleted(ep_id) && ((!isIdAllowed) || (*isIdAllowed)(getExternalLabel(ep_id))))) {
+
+                char* ep_data = getDataByInternalId(ep_id);
+                dist_t dist = fstdistfunc_(data_point, ep_data, dist_func_param_);
+
+                top_candidates.emplace(dist, ep_id);
+                if (!bare_bone_search && stop_condition) {
+                    stop_condition->add_point_to_result(getExternalLabel(ep_id), ep_data, dist);
+                }
+                candidate_set.emplace(-dist, ep_id);
+                } else {
+                    candidate_set.emplace(-lowerBound, ep_id);
+                }
+
+            visited_array[ep_id] = visited_array_tag;
+        }
+
+        // 确保top_candidates不超过ef
+        while (top_candidates.size() > ef) {
+            if (!bare_bone_search && stop_condition) {
+                tableint id = top_candidates.top().second;
+                dist_t removed_dist = top_candidates.top().first;
+                stop_condition->remove_point_from_result(getExternalLabel(id), getDataByInternalId(id), removed_dist);
+            }
+            top_candidates.pop();
+        }
+
+        // 如果没有有效的入口点，设置默认下界
+        if (top_candidates.empty()) {
+            lowerBound = std::numeric_limits<dist_t>::max();
+        } else {
+            lowerBound = top_candidates.top().first;  // 最远的有效点作为初始下界
+        }
 
         while (!candidate_set.empty()) {
             std::pair<dist_t, tableint> current_node_pair = candidate_set.top();
@@ -403,7 +562,7 @@ class HierarchicalNSW : public AlgorithmInterface<dist_t> {
                                         _MM_HINT_T0);  ////////////////////////
 #endif
 
-                        if (bare_bone_search || 
+                        if (bare_bone_search ||
                             (!isMarkedDeleted(candidate_id) && ((!isIdAllowed) || (*isIdAllowed)(getExternalLabel(candidate_id))))) {
                             top_candidates.emplace(dist, candidate_id);
                             if (!bare_bone_search && stop_condition) {
@@ -439,6 +598,134 @@ class HierarchicalNSW : public AlgorithmInterface<dist_t> {
         return top_candidates;
     }
 
+    template <bool bare_bone_search = true, bool collect_metrics = false>
+    std::priority_queue<std::pair<dist_t, tableint>, std::vector<std::pair<dist_t, tableint>>, CompareByFirst>
+    self_searchBaseLayerST(
+        tableint ep_id,
+        const void *data_point,
+        size_t ef,
+        BaseFilterFunctor* isIdAllowed = nullptr,
+        BaseSearchStopCondition<dist_t>* stop_condition = nullptr) const {
+        VisitedList *vl = visited_list_pool_->getFreeVisitedList();
+        vl_type *visited_array = vl->mass;
+        vl_type visited_array_tag = vl->curV;
+
+        std::priority_queue<std::pair<dist_t, tableint>, std::vector<std::pair<dist_t, tableint>>, CompareByFirst> top_candidates;
+        std::priority_queue<std::pair<dist_t, tableint>, std::vector<std::pair<dist_t, tableint>>, CompareByFirst> candidate_set;
+
+        dist_t lowerBound;
+        if (bare_bone_search ||
+            (!isMarkedDeleted(ep_id) && ((!isIdAllowed) || (*isIdAllowed)(getExternalLabel(ep_id))))) {
+            dist_t dist = 0;
+            lowerBound = 0;
+            top_candidates.emplace(dist, ep_id);
+            candidate_set.emplace(-dist, ep_id);
+        } else {
+            lowerBound = std::numeric_limits<dist_t>::max();
+            candidate_set.emplace(-lowerBound, ep_id);
+        }
+
+        visited_array[ep_id] = visited_array_tag;
+
+        while (!candidate_set.empty()) {
+            std::pair<dist_t, tableint> current_node_pair = candidate_set.top(); // 当前最近点
+            dist_t candidate_dist = -current_node_pair.first;
+
+            bool flag_stop_search;
+            if (bare_bone_search) {
+                flag_stop_search = candidate_dist > lowerBound; // 最近点距离大于当前下界，停止搜索
+            } else {
+                if (stop_condition) {
+                    flag_stop_search = stop_condition->should_stop_search(candidate_dist, lowerBound);
+                } else {
+                    flag_stop_search = candidate_dist > lowerBound && top_candidates.size() == ef;
+                }
+            }
+            if (flag_stop_search) {
+                break;
+            }
+            candidate_set.pop(); // 若继续搜索，弹出当前最近点
+
+            tableint current_node_id = current_node_pair.second;
+            int *data = (int *) get_linklist0(current_node_id);
+            size_t size = getListCount((linklistsizeint*)data);
+//                bool cur_node_deleted = isMarkedDeleted(current_node_id);
+            if (collect_metrics) {
+                metric_hops++;
+                metric_distance_computations+=size;
+            }
+
+#ifdef USE_SSE
+            _mm_prefetch((char *) (visited_array + *(data + 1)), _MM_HINT_T0);
+            _mm_prefetch((char *) (visited_array + *(data + 1) + 64), _MM_HINT_T0);
+            _mm_prefetch(data_level0_memory_ + (*(data + 1)) * size_data_per_element_ + offsetData_, _MM_HINT_T0);
+            _mm_prefetch((char *) (data + 2), _MM_HINT_T0);
+#endif
+
+            for (size_t j = 1; j <= size; j++) { // 遍历当前节点的所有邻居
+                int candidate_id = *(data + j);
+//                    if (candidate_id == 0) continue;
+#ifdef USE_SSE
+                _mm_prefetch((char *) (visited_array + *(data + j + 1)), _MM_HINT_T0);
+                _mm_prefetch(data_level0_memory_ + (*(data + j + 1)) * size_data_per_element_ + offsetData_,
+                                _MM_HINT_T0);  ////////////
+#endif
+                if (!(visited_array[candidate_id] == visited_array_tag)) { // 该邻居未访问过
+                    visited_array[candidate_id] = visited_array_tag;
+
+                    char *currObj1 = (getDataByInternalId(candidate_id));
+                    dist_t dist = fstdistfunc_(data_point, currObj1, dist_func_param_);
+
+                    bool flag_consider_candidate;
+                    if (!bare_bone_search && stop_condition) {
+                        flag_consider_candidate = stop_condition->should_consider_candidate(dist, lowerBound);
+                    } else {
+                        flag_consider_candidate = top_candidates.size() < ef || lowerBound > dist; // 距离小于下界，或者top_candidates未满都考虑插入此点
+                    }
+
+                    if (flag_consider_candidate) {
+                        candidate_set.emplace(-dist, candidate_id);
+#ifdef USE_SSE
+                        _mm_prefetch(data_level0_memory_ + candidate_set.top().second * size_data_per_element_ +
+                                        offsetLevel0_,  ///////////
+                                        _MM_HINT_T0);  ////////////////////////
+#endif
+
+                        if (bare_bone_search ||
+                            (!isMarkedDeleted(candidate_id) && ((!isIdAllowed) || (*isIdAllowed)(getExternalLabel(candidate_id))))) {
+                            top_candidates.emplace(dist, candidate_id);
+                            if (!bare_bone_search && stop_condition) {
+                                stop_condition->add_point_to_result(getExternalLabel(candidate_id), currObj1, dist);
+                            }
+                        }
+
+                        bool flag_remove_extra = false;
+                        if (!bare_bone_search && stop_condition) {
+                            flag_remove_extra = stop_condition->should_remove_extra();
+                        } else {
+                            flag_remove_extra = top_candidates.size() > ef;
+                        }
+                        while (flag_remove_extra) {
+                            tableint id = top_candidates.top().second;
+                            top_candidates.pop();
+                            if (!bare_bone_search && stop_condition) {
+                                stop_condition->remove_point_from_result(getExternalLabel(id), getDataByInternalId(id), dist);
+                                flag_remove_extra = stop_condition->should_remove_extra();
+                            } else {
+                                flag_remove_extra = top_candidates.size() > ef;
+                            }
+                        }
+
+                        if (!top_candidates.empty())
+                            lowerBound = top_candidates.top().first;
+                    }
+                }
+            }
+        }
+
+        visited_list_pool_->releaseVisitedList(vl);
+        return top_candidates;
+    }
 
     void getNeighborsByHeuristic2(
         std::priority_queue<std::pair<dist_t, tableint>, std::vector<std::pair<dist_t, tableint>>, CompareByFirst> &top_candidates,
@@ -995,6 +1282,14 @@ class HierarchicalNSW : public AlgorithmInterface<dist_t> {
         }
     }
 
+    void addPoint_level0_only(const void *data_point, labeltype label) {
+        // lock all operations with element by label
+        std::unique_lock <std::mutex> lock_label(getLabelOpMutex(label)); // 最多并发MAX_LABEL_OPERATION_LOCKS - 1个label
+        addPoint(data_point, label, 0);
+        return;
+
+    }
+
 
     void updatePoint(const void *dataPoint, tableint internalId, float updateNeighborProbability) {
         // update the feature vector associated with existing point with new vector
@@ -1275,7 +1570,6 @@ class HierarchicalNSW : public AlgorithmInterface<dist_t> {
 
     std::priority_queue<std::pair<dist_t, tableint>, std::vector<std::pair<dist_t, tableint>>, CompareByFirst>
     Global_merge(const void *query_data, size_t ef_merge, BaseFilterFunctor* isIdAllowed = nullptr) const {
-        std::priority_queue<std::pair<dist_t, labeltype >> result;
         if (cur_element_count == 0)
         {
             throw std::runtime_error("can't merge an empty graph");
@@ -1321,6 +1615,44 @@ class HierarchicalNSW : public AlgorithmInterface<dist_t> {
                     currObj, query_data, std::max(ef_, ef_merge), isIdAllowed);
         }
 
+        return top_candidates;
+    }
+
+    std::priority_queue<std::pair<dist_t, tableint>, std::vector<std::pair<dist_t, tableint>>, CompareByFirst>
+    Local_merge(const void *query_data, size_t ef_merge, std::vector<tableint> eps,BaseFilterFunctor* isIdAllowed = nullptr) const {
+        if (cur_element_count == 0)
+        {
+            throw std::runtime_error("can't merge an empty graph");
+        }
+
+        std::priority_queue<std::pair<dist_t, tableint>, std::vector<std::pair<dist_t, tableint>>, CompareByFirst> top_candidates;
+        bool bare_bone_search = !num_deleted_ && !isIdAllowed;
+        if (bare_bone_search) {
+            top_candidates = searchBaseLayerST<true>(
+                    eps, query_data, ef_merge, isIdAllowed);
+        } else {
+            top_candidates = searchBaseLayerST<false>(
+                    eps, query_data, ef_merge, isIdAllowed);
+        }
+        return top_candidates;
+    }
+
+    std::priority_queue<std::pair<dist_t, tableint>, std::vector<std::pair<dist_t, tableint>>, CompareByFirst>
+    Self_search(const void *query_data, size_t ef_merge, tableint ep,BaseFilterFunctor* isIdAllowed = nullptr) const {
+        if (cur_element_count == 0)
+        {
+            throw std::runtime_error("can't merge an empty graph");
+        }
+
+        std::priority_queue<std::pair<dist_t, tableint>, std::vector<std::pair<dist_t, tableint>>, CompareByFirst> top_candidates;
+        bool bare_bone_search = !num_deleted_ && !isIdAllowed;
+        if (bare_bone_search) {
+            top_candidates = self_searchBaseLayerST<true>(
+                    ep, query_data, ef_merge, isIdAllowed);
+        } else {
+            top_candidates = self_searchBaseLayerST<false>(
+                    ep, query_data, ef_merge, isIdAllowed);
+        }
         return top_candidates;
     }
 

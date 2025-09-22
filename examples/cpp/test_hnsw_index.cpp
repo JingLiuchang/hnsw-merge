@@ -87,9 +87,14 @@ int main(int argc, char** argv) {
     hnswlib::L2Space space(dim);
     hnswlib::HierarchicalNSW<float>* alg_hnsw = new hnswlib::HierarchicalNSW<float>(&space, max_elements, M, ef_construction);
 
+    auto s = std::chrono::high_resolution_clock::now();
     ParallelFor(0, max_elements, num_threads, [&](size_t row, size_t threadId) {
         alg_hnsw->addPoint((void*)(data + dim * row), row); // fn(row, threadId)在threadId号线程中执行alg_hnsw->addPoint, row: partition id
     });
+    auto e = std::chrono::high_resolution_clock::now();
+
+    double index_time = std::chrono::duration<double>(e - s).count();
+    std::cout << "Index time: " << index_time << " s; " << graph_index_path.substr(graph_index_path.find_last_of('/') + 1) << std::endl;
 
     alg_hnsw->saveIndex(graph_index_path);
 

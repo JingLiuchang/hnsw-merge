@@ -56,6 +56,25 @@ if(HNSWLIB_EXAMPLES)
       #SET( CMAKE_CXX_FLAGS  "/O2 -DHAVE_CXX0X /W1 /openmp /EHsc" ) # release
     endif()
 
+    # 添加 TBB 支持
+    find_package(PkgConfig QUIET)
+    if(PkgConfig_FOUND)
+        pkg_check_modules(TBB tbb)
+    endif()
+
+    if(NOT TBB_FOUND)
+        find_library(TBB_LIBRARY tbb)
+        if(TBB_LIBRARY)
+            set(TBB_LIBRARIES ${TBB_LIBRARY})
+            message(STATUS "Found TBB library: ${TBB_LIBRARY}")
+        else()
+            message(WARNING "TBB library not found. Some features may not work.")
+            set(TBB_LIBRARIES "")
+        endif()
+    else()
+        message(STATUS "Found TBB via pkg-config")
+    endif()
+
     # examples
     add_executable(example_search examples/cpp/example_search.cpp)
     target_link_libraries(example_search hnswlib)
@@ -81,14 +100,20 @@ if(HNSWLIB_EXAMPLES)
     add_executable(example_mt_replace_deleted examples/cpp/example_mt_replace_deleted.cpp)
     target_link_libraries(example_mt_replace_deleted hnswlib)
 
-    add_executable(test_bimerge_index examples/cpp/test_bimerge_index.cpp)
-    target_link_libraries(test_bimerge_index hnswlib)
+    add_executable(test_NGM_merge examples/cpp/test_NGM_merge.cpp)
+    target_link_libraries(test_NGM_merge hnswlib ${TBB_LIBRARIES})
+
+    add_executable(test_RGTM_merge examples/cpp/test_RGTM_merge.cpp)
+    target_link_libraries(test_RGTM_merge hnswlib ${TBB_LIBRARIES})
 
     add_executable(test_hnsw_index examples/cpp/test_hnsw_index.cpp)
     target_link_libraries(test_hnsw_index hnswlib)
 
+    add_executable(test_hnsw_level0_index examples/cpp/test_hnsw_level0_index.cpp)
+    target_link_libraries(test_hnsw_level0_index hnswlib)
+
     add_executable(test_hnsw_search examples/cpp/test_hnsw_search.cpp)
-    target_link_libraries(test_hnsw_search hnswlib)
+    target_link_libraries(test_hnsw_search hnswlib ${TBB_LIBRARIES})
 
     # tests
     add_executable(multivector_search_test tests/cpp/multivector_search_test.cpp)

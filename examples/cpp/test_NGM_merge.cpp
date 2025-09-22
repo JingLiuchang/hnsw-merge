@@ -5,6 +5,7 @@
 #include <thread>
 #include "../../hnswlib/utils.h"
 #include "omp.h"
+#include "../../hnswlib/parameter.h"
 
 // Multithreaded executor
 // The helper function copied from python_bindings/bindings.cpp (and that itself is copied from nmslib)
@@ -65,9 +66,9 @@ inline void ParallelFor(size_t start, size_t end, size_t numThreads, Function fn
 
 
 int main(int argc, char** argv) {
-    if (argc != 7) {
+    if (argc != 11) {
         std::cout << argv[0]
-                  << " data_file ef_construction M graph_num graph_index_file merged_nsg_path"
+                  << " data_file ef_construction M sub_ef sub_M graph_num graph_index_file merged_nsg_path ET ratio"
                   << std::endl;
         exit(-1);
     }
@@ -77,9 +78,19 @@ int main(int argc, char** argv) {
     load_data(argv[1], data, max_elements, dim);
     int ef_construction = atoi(argv[2]);
     int M = atoi(argv[3]);
-    int graph_num = atoi(argv[4]);
-    std::string graph_index_file = std::string(argv[5]);
-    std::string merged_nsg_path = std::string(argv[6]);
+    int sub_ef = atoi(argv[4]);
+    int sub_M = atoi(argv[5]);
+    int graph_num = atoi(argv[6]);
+    std::string graph_index_file = std::string(argv[7]);
+    std::string merged_nsg_path = std::string(argv[8]);
+    int ET = atoi(argv[9]);
+    float ratio = atof(argv[10]);
+
+    hnswlib::Parameters params;
+    params.Set<bool>("early_terminate", ET);
+    params.Set<float>("et_ratio", ratio);
+    params.Set<std::string>("method", "NGM");
+    params.Set<bool>("print", true);
 
     // Initing index
     hnswlib::L2Space space(dim);
@@ -88,7 +99,7 @@ int main(int argc, char** argv) {
     std::vector<hnswlib::HierarchicalNSW<float>*> graphs(graph_num);
     for (unsigned i = 0; i < graph_num; i++)
     {
-        std::string index_file = graph_index_file + std::to_string(i+1) + "_ef50_M16.hnsw";
+        std::string index_file = graph_index_file + std::to_string(i+1) + "_ef" + std::to_string(sub_ef) + "_M" + std::to_string(sub_M) + ".hnsw";
         hnswlib::L2Space space(dim);
         hnswlib::HierarchicalNSW<float>* hnsw = new hnswlib::HierarchicalNSW<float>(&space);
         hnsw->loadIndex(index_file, &space);
@@ -98,10 +109,15 @@ int main(int argc, char** argv) {
     int num_threads = 72;       // Number of threads for operations with index
     omp_set_num_threads(num_threads);
 
-    alg_hnsw->mgraph_merge(graph_num, graphs);
+    auto s = std::chrono::high_resolution_clock::now();
+    alg_hnsw->mgraph_merge(graph_num, graphs, params);
+    auto e = std::chrono::high_resolution_clock::now();
+
+    double merge_time = std::chrono::duration<double>(e - s).count();
+
+    std::cout << "Merge time: " << merge_time << " s; " << merged_nsg_path.substr(merged_nsg_path.find_last_of('/') + 1) << std::endl;
 
     alg_hnsw->saveIndex(merged_nsg_path);
-
 
     delete[] data;
     delete alg_hnsw;

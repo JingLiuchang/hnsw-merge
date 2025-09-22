@@ -3,6 +3,7 @@
 //
 #pragma once
 
+#include <tbb/parallel_sort.h>
 #include "visited_list_pool.h"
 #include "hnswlib.h"
 #include <atomic>
@@ -12,6 +13,8 @@
 #include <unordered_set>
 #include <list>
 #include <memory>
+#include "parameter.h"
+#include <algorithm>
 
 namespace hnswlib {
 typedef unsigned int tableint;
@@ -639,7 +642,7 @@ class MergeHierarchicalNSW : public HierarchicalNSW<dist_t> {
         return next_closest_entry_point;
     }
 
-    void Pruning_InterInsert(
+    std::vector<tableint> Pruning_InterInsert(
         const void *data_point,
         tableint cur_c,
         std::priority_queue<std::pair<dist_t, tableint>, std::vector<std::pair<dist_t, tableint>>, CompareByFirst> &top_candidates,
@@ -652,7 +655,8 @@ class MergeHierarchicalNSW : public HierarchicalNSW<dist_t> {
 
         std::vector<tableint> selectedNeighbors;
         selectedNeighbors.reserve(M_);
-        while (top_candidates.size() > 0) {
+        while (top_candidates.size() > 0)
+        {
             selectedNeighbors.push_back(top_candidates.top().second);
             top_candidates.pop();
         }
@@ -758,7 +762,7 @@ class MergeHierarchicalNSW : public HierarchicalNSW<dist_t> {
                 }
             }
         }
-
+        return selectedNeighbors;
     }
 
 
@@ -1628,8 +1632,10 @@ class MergeHierarchicalNSW : public HierarchicalNSW<dist_t> {
         }
     }
 
-    void mgraph_merge(unsigned m, std::vector<HierarchicalNSW<dist_t>*> graphs) // 直接update MergeHierarchicalNSW
+    void mgraph_merge(unsigned m, std::vector<HierarchicalNSW<dist_t>*> graphs, const Parameters &parameters) // 直接update MergeHierarchicalNSW
     {
+        std::string method = parameters.Get<std::string>("method");
+
         size_t num_element = 0;
         for (unsigned i = 0; i < m; ++i)
         {
@@ -1651,22 +1657,71 @@ class MergeHierarchicalNSW : public HierarchicalNSW<dist_t> {
         pairwise_merge_order(m, merge_order);
 
         // start merging
-        for (auto&& p : merge_order) { // pairwise merge
-            NGM_merge_into_later(graphs, p.first, p.second, ef_construction_); // first merge into second
-            NGM_merge_into_later(graphs, p.second, p.first, ef_construction_); // second merge into first
+        if (method == "NGM")
+        {
+            for (auto&& p : merge_order) { // pairwise merge
+                NGM_merge_into_later(graphs, p.first, p.second, ef_construction_, parameters); // first merge into second
+                NGM_merge_into_later(graphs, p.second, p.first, ef_construction_, parameters); // second merge into first
+            }
+        }
+        else if (method == "RGTM")
+        {
+            for (auto&& p : merge_order) { // pairwise merge
+                RGTM_merge_into_later(graphs, p.first, p.second, parameters); // first merge into second
+                RGTM_merge_into_later(graphs, p.second, p.first, parameters); // second merge into first
+            }
+        }
+        else
+        {
+            std::cerr << "Error: unknown method " << method << std::endl;
+        }
+    }
+
+    // ET相关
+    void update_hits_counter(const std::vector<tableint>& selectedNeighbors,
+                        const std::pair<size_t, size_t>& hit_range,
+                        std::vector<std::atomic<uint8_t>>& hits,
+                        std::atomic<size_t>& total_hits)
+    {
+        for (tableint selected_id : selectedNeighbors)
+        {
+            if (selected_id >= hit_range.first && selected_id < hit_range.second) {
+                size_t idx = selected_id - hit_range.first;
+                uint8_t expected = 0;
+                if (hits[idx].compare_exchange_strong(expected, 1, std::memory_order_acq_rel)) {
+                    total_hits.fetch_add(1, std::memory_order_relaxed);
+                }
+            }
         }
     }
 
     // G1 into G2 的merge, 改变G1. G2 search G1.x
-    void NGM_merge_into_later(std::vector<HierarchicalNSW<dist_t>*> graphs, unsigned G1_id, unsigned G2_id, size_t ef_merge)
+    void NGM_merge_into_later(std::vector<HierarchicalNSW<dist_t>*> graphs, unsigned G1_id, unsigned G2_id, size_t ef_merge, const Parameters &parameters)
     {
         HierarchicalNSW<dist_t>* G1 = graphs[G1_id];
         HierarchicalNSW<dist_t>* G2 = graphs[G2_id];
-#pragma omp parallel for  schedule(dynamic, 72)
+
+        bool et = parameters.Get<bool>("early_terminate");
+        float ratio = parameters.Get<float>("et_ratio");
+        size_t target_hits = static_cast<size_t>(ratio * G2->cur_element_count);
+
+        std::pair<size_t, size_t> hit_range = {globalid_offset[G2_id], globalid_offset[G2_id] + G2->cur_element_count};// [A,B)
+        std::vector<std::atomic<uint8_t>> hits(G2->cur_element_count);
+        for (auto& h : hits) h.store(0, std::memory_order_relaxed);
+        std::atomic<size_t> total_hits{0};
+        std::atomic<bool> should_terminate{false};
+
+
+#pragma omp parallel for schedule(dynamic, 72)
         for (tableint internal_id = 0; internal_id < G1->cur_element_count; ++internal_id)
         {
+            if (et && should_terminate.load(std::memory_order_acquire)) {
+                continue; // 跳过剩余迭代
+            }
+
             float* data_point = (float*) G1->getDataByInternalId(internal_id);
-            std::priority_queue<std::pair<dist_t, tableint>, std::vector<std::pair<dist_t, tableint>>, HierarchicalNSW<float>::CompareByFirst> temp_candidates = G2->Global_merge(data_point, ef_merge);
+            std::priority_queue<std::pair<dist_t, tableint>, std::vector<std::pair<dist_t, tableint>>, HierarchicalNSW<float>::CompareByFirst>
+            temp_candidates = G2->Global_merge(data_point, ef_merge);
             std::priority_queue<std::pair<dist_t, tableint>, std::vector<std::pair<dist_t, tableint>>, CompareByFirst> top_candidates;
 
             // pruning candidateset 和 更新目标都转化为合并图G中的internal id
@@ -1686,13 +1741,213 @@ class MergeHierarchicalNSW : public HierarchicalNSW<dist_t> {
                 top_candidates.push({fstdistfunc_(data_point, getDataByInternalId(neighbor_internalid), dist_func_param_), neighbor_internalid});
             }
 
-            Pruning_InterInsert(data_point, merged_internal_id, top_candidates, 0); // 更新merged_internal_id的邻居并添加反向边
+            std::vector<tableint> selectedNeighbors = Pruning_InterInsert(data_point, merged_internal_id, top_candidates, 0); // 更新merged_internal_id的邻居并添加反向边
+
+            if (et)
+            {
+                for (tableint selected_id: selectedNeighbors)
+                {
+                    if (selected_id >= hit_range.first && selected_id < hit_range.second) {
+                        size_t idx = selected_id - hit_range.first;
+                        uint8_t expected = 0;
+                        if (hits[idx].compare_exchange_strong(expected, 1, std::memory_order_acq_rel)) {
+                            total_hits.fetch_add(1, std::memory_order_relaxed);
+
+                            if (total_hits >= target_hits) {
+                                should_terminate.store(true, std::memory_order_release);
+                                break; // 退出内层循环
+                            }
+                        }
+                    }
+                }
+            }
+
         }
     }
 
-    void IGTM_merge_into_later(HierarchicalNSW<dist_t>* G1, HierarchicalNSW<dist_t>* G2)
+    std::vector<block_info> construct_blocks(HierarchicalNSW<dist_t>* G, const Parameters &parameters)
     {
-        return;
+        unsigned self_ef = parameters.Get<unsigned>("self_ef");
+
+        // step1 get kNN
+        std::vector<std::vector<tableint>> Nks;
+        Nks.resize(G->cur_element_count);
+#pragma omp parallel for schedule(dynamic, 72)
+        for (tableint internal_id = 0; internal_id < G->cur_element_count; ++internal_id)
+        {
+            float* data_point = (float*) G->getDataByInternalId(internal_id);
+            std::priority_queue<std::pair<dist_t, tableint>, std::vector<std::pair<dist_t, tableint>>, HierarchicalNSW<float>::CompareByFirst>
+            temp_candidates = G->Self_search(data_point, self_ef, internal_id);
+
+            while (temp_candidates.size() != 0)
+            {
+                Nks[internal_id].push_back(temp_candidates.top().second);
+                temp_candidates.pop();
+            }
+        }
+
+        // step2 construct reverse NN
+        std::vector<reverseNN_info> Rks;
+        Rks.resize(G->cur_element_count);
+        std::vector<std::mutex> rks_mutexes(G->cur_element_count);  // 每个点一个独立的锁
+
+        for (tableint internal_id = 0; internal_id < G->cur_element_count; ++internal_id) {
+            Rks[internal_id] = reverseNN_info(internal_id);
+        }
+
+#pragma omp parallel for schedule(dynamic, 72)
+        for (tableint internal_id = 0; internal_id < G->cur_element_count; ++internal_id) {
+            for (tableint neighbor_id : Nks[internal_id]) {
+                std::lock_guard<std::mutex> lock(rks_mutexes[neighbor_id]);
+                Rks[neighbor_id].rNNs.push_back(internal_id);
+                Rks[neighbor_id].length++;
+            }
+        }
+
+        // step3 sort Rks by size
+        tbb::parallel_sort(Rks.begin(), Rks.end(),
+                                 [](const reverseNN_info& a, const reverseNN_info& b) {
+                                     return a.length > b.length;
+                                 });
+
+        // step4 construct blocks
+        std::vector<unsigned> considered;
+        considered.resize(G->cur_element_count, 0);
+        std::vector<block_info> blocks;
+        blocks.reserve(G->cur_element_count);
+        for (tableint internal_id = 0; internal_id < G->cur_element_count; ++internal_id) {
+            tableint bid = Rks[internal_id].id; // 取出当前block的中心点id
+            if (considered[bid] == 1) continue; // 如果这个点已经被hit过了，跳过
+
+            considered[bid] = 1;
+            std::vector<tableint> bmembers;
+            bmembers.reserve(Rks[internal_id].rNNs.size());
+            for (tableint c : Rks[internal_id].rNNs) {
+                if (considered[c] == 0) {
+                    considered[c] = 1;
+                    bmembers.push_back(c);
+                }
+            }
+
+            blocks.push_back(block_info(bid, bmembers));
+        }
+
+        return blocks;
+    }
+
+    void RGTM_merge_into_later(std::vector<HierarchicalNSW<dist_t>*> graphs, unsigned G1_id, unsigned G2_id, const Parameters &parameters)
+    {
+        HierarchicalNSW<dist_t>* G1 = graphs[G1_id];
+        HierarchicalNSW<dist_t>* G2 = graphs[G2_id];
+        bool print = parameters.Get<bool>("print");
+
+        // RGTM相关参数
+        unsigned global_ef = ef_construction_;
+        unsigned local_ef = parameters.Get<unsigned>("local_ef");
+
+        // ET相关参数
+        bool et = parameters.Get<bool>("early_terminate");
+        float ratio = parameters.Get<float>("et_ratio");
+        size_t target_hits = static_cast<size_t>(ratio * G2->cur_element_count);
+        std::pair<size_t, size_t> hit_range = {globalid_offset[G2_id], globalid_offset[G2_id] + G2->cur_element_count};// [A,B)
+        std::vector<std::atomic<uint8_t>> hits(G2->cur_element_count);
+        for (auto& h : hits) h.store(0, std::memory_order_relaxed);
+        std::atomic<size_t> total_hits{0};
+        std::atomic<bool> should_terminate{false};
+
+        auto blocks = construct_blocks(G1, parameters);
+
+        if (print) {
+            size_t G_cnt = 0;
+            size_t L_cnt = 0;
+
+            G_cnt = blocks.size();
+            for (auto block : blocks) {
+                L_cnt += block.bmembers.size();
+            }
+            std::cout << "L : G = " << L_cnt << " : " << G_cnt << " = " << (float)L_cnt/G_cnt << std::endl;
+        }
+
+        // step5 start merging
+#pragma omp parallel for schedule(dynamic, 72)
+        for (size_t i = 0; i < blocks.size(); ++i) // Global Merge
+        {
+            if (et && should_terminate.load(std::memory_order_acquire)) {
+                continue; // 跳过剩余迭代
+            }
+
+            tableint global_search_id = blocks[i].bid;
+            std::vector<tableint> local_search_members = blocks[i].bmembers;
+            float* global_merge_data = (float*) G1->getDataByInternalId(global_search_id);
+
+            std::priority_queue<std::pair<dist_t, tableint>, std::vector<std::pair<dist_t, tableint>>, HierarchicalNSW<float>::CompareByFirst>
+            temp_candidates = G2->Global_merge(global_merge_data, global_ef);
+            std::priority_queue<std::pair<dist_t, tableint>, std::vector<std::pair<dist_t, tableint>>, CompareByFirst> top_candidates;
+
+            // pruning candidateset 和 更新目标都转化为合并图G中的internal id 并留下local entry points
+            std::vector<tableint> starting_ids;
+            while (!temp_candidates.empty()) {
+                auto candidate = temp_candidates.top();
+                temp_candidates.pop();
+                starting_ids.push_back(candidate.first);
+                top_candidates.push({candidate.first, candidate.second + globalid_offset[G2_id]});
+            }
+            tableint merged_internal_id = global_search_id + globalid_offset[G1_id];
+
+            // top_candidates中加入原本邻居
+            linklistsizeint* cur_element_data = get_linklist0(merged_internal_id);
+            unsigned short int neighbor_count = getListCount(cur_element_data);
+            for (unsigned k = 0; k < neighbor_count; ++k)
+            {
+                tableint neighbor_internalid = *((tableint*)(cur_element_data + 1) + k);
+                top_candidates.push({fstdistfunc_(global_merge_data, getDataByInternalId(neighbor_internalid), dist_func_param_), neighbor_internalid});
+            }
+
+            std::vector<tableint> selectedNeighbors = Pruning_InterInsert(global_merge_data, merged_internal_id, top_candidates, 0); // 更新merged_internal_id的邻居并添加反向边
+
+            if (et)
+            {
+                update_hits_counter(selectedNeighbors, hit_range, hits, total_hits);
+            }
+
+            for (size_t j = 0; j < local_search_members.size(); ++j) // Local Merge
+            {
+                tableint local_search_id = local_search_members[j];
+                float* local_merge_data = (float*) G1->getDataByInternalId(local_search_id);
+
+                std::priority_queue<std::pair<dist_t, tableint>, std::vector<std::pair<dist_t, tableint>>, HierarchicalNSW<float>::CompareByFirst>
+                local_temp_candidates = G2->Local_merge(local_merge_data, local_ef, starting_ids);
+                std::priority_queue<std::pair<dist_t, tableint>, std::vector<std::pair<dist_t, tableint>>, CompareByFirst> local_top_candidates;
+
+                // pruning candidateset 和 更新目标都转化为合并图G中的internal id
+                while (!local_temp_candidates.empty()) {
+                    auto candidate = local_temp_candidates.top();
+                    local_temp_candidates.pop();
+                    local_top_candidates.push({candidate.first, candidate.second + globalid_offset[G2_id]});
+                }
+                tableint local_merged_internal_id = local_search_id + globalid_offset[G1_id];
+
+                // top_candidates中加入原本邻居
+                linklistsizeint* local_cur_element_data = get_linklist0(local_merged_internal_id);
+                unsigned short int local_neighbor_count = getListCount(local_cur_element_data);
+                for (unsigned k = 0; k < local_neighbor_count; ++k)
+                {
+                    tableint neighbor_internalid = *((tableint*)(local_cur_element_data + 1) + k);
+                    local_top_candidates.push({fstdistfunc_(local_merge_data, getDataByInternalId(neighbor_internalid), dist_func_param_), neighbor_internalid});
+                }
+
+                std::vector<tableint> local_selectedNeighbors = Pruning_InterInsert(local_merge_data, local_merged_internal_id, local_top_candidates, 0); // 更新merged_internal_id的邻居并添加反向边
+
+                if (et)
+                {
+                    update_hits_counter(selectedNeighbors, hit_range, hits, total_hits);
+                }
+            }
+
+            if (total_hits >= target_hits) {
+                should_terminate.store(true, std::memory_order_release);
+            }
+        }
     }
 };
 }  // namespace hnswlib

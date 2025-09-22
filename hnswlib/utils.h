@@ -4,6 +4,7 @@
 
 #include <fstream>
 #include <iostream>
+#include <sys/stat.h>
 
 #ifndef UTILS_H
 #define UTILS_H
@@ -16,7 +17,7 @@ void load_data(char* filename, float*& data, int& num,
         exit(-1);
     }
     in.read((char*)&dim, 4);
-    std::cout << "data dimension: " << dim << std::endl;
+    //std::cout << "data dimension: " << dim << std::endl;
     in.seekg(0, std::ios::end);
     std::ios::pos_type ss = in.tellg();
     size_t fsize = (size_t)ss;
@@ -121,6 +122,47 @@ double compute_recall(const std::vector<std::vector<hnswlib::labeltype>>& res,
 
     // Return average recall over all queries
     return total_recall / query_num;
+}
+
+bool file_exists(const std::string& filename) {
+    struct stat buffer;
+    return (stat(filename.c_str(), &buffer) == 0);
+}
+
+void write_csv_data(const std::string& file_path, int L, double recall, double QPS, bool add) {
+    bool exists = file_exists(file_path);
+
+    std::ofstream csv_file;
+
+    if (exists and add)
+    {
+        // 追加模式打开文件
+        csv_file.open(file_path, std::ios::app);
+    }
+    else if (exists and !add)
+    {
+        // 覆盖模式打开文件
+        csv_file.open(file_path, std::ios::trunc);
+        // 写入表头
+        csv_file << "L,recall,QPS" << std::endl;
+    }
+    else if (!exists)
+    {
+        // 创建新文件
+        csv_file.open(file_path);
+        // 写入表头
+        csv_file << "L,recall,QPS" << std::endl;
+    }
+
+    if (!csv_file.is_open()) {
+        std::cerr << "Failed to open file: " << file_path << std::endl;
+        return;
+    }
+
+    // 写入数据行
+    csv_file << L << "," << recall << "," << QPS << std::endl;
+
+    csv_file.close();
 }
 
 #endif //UTILS_H

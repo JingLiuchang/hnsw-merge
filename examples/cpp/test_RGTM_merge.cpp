@@ -1,10 +1,11 @@
 //
-// Created by jlc on 9/15/25.
-//
+// Created by jlc on 9/21/25.
 //
 #include "../../hnswlib/hnswlib.h"
 #include <thread>
 #include "../../hnswlib/utils.h"
+#include "omp.h"
+#include "../../hnswlib/parameter.h"
 
 // Multithreaded executor
 // The helper function copied from python_bindings/bindings.cpp (and that itself is copied from nmslib)
@@ -65,9 +66,9 @@ inline void ParallelFor(size_t start, size_t end, size_t numThreads, Function fn
 
 
 int main(int argc, char** argv) {
-    if (argc != 10) {
+    if (argc != 13) {
         std::cout << argv[0]
-                  << "data_file query_file gt_file graph_index_path k min_ef max_ef stepsize performance_csv"
+                  << " data_file global_ef local_ef self_ef M sub_ef sub_M graph_num graph_index_file merged_nsg_path ET ratio"
                   << std::endl;
         exit(-1);
     }
@@ -75,71 +76,62 @@ int main(int argc, char** argv) {
     float* data = NULL;
     int max_elements, dim;
     load_data(argv[1], data, max_elements, dim);
+    int ef_construction = atoi(argv[2]);
+    int local_ef = atoi(argv[3]);
+    int self_ef = atoi(argv[4]);
+    int M = atoi(argv[5]);
+    int sub_ef = atoi(argv[6]);
+    int sub_M = atoi(argv[7]);
+    int graph_num = atoi(argv[8]);
+    std::string graph_index_file = std::string(argv[9]);
+    std::string merged_nsg_path = std::string(argv[10]);
+    int ET = atoi(argv[11]);
+    float ratio = atof(argv[12]);
 
-    float* query = NULL;
-    int query_elements, query_dim;
-    load_data(argv[2], query, query_elements, query_dim);
-
-    // auto dist_gt = read_fvecs(argv[1]);
-    std::vector<std::vector<unsigned>> gt = read_ivecs(argv[3]);
-
-    std::string graph_index_path = std::string(argv[4]);
-    int k = atoi(argv[5]);
-    int min_ef = atoi(argv[6]);
-    int max_ef = atoi(argv[7]);
-    int stepsize = atoi(argv[8]);
-    std::string performance_csv = std::string(argv[9]);
-
-    int num_threads = 8;       // Number of threads for operations with index
+    hnswlib::Parameters params;
+    params.Set<bool>("early_terminate", ET);
+    params.Set<float>("et_ratio", ratio);
+    params.Set<int>("local_ef", local_ef);
+    params.Set<int>("self_ef", self_ef);
+    params.Set<std::string>("method", "RGTM");
+    params.Set<bool>("print", true);
 
     // Initing index
     hnswlib::L2Space space(dim);
-    hnswlib::HierarchicalNSW<float>* alg_hnsw = new hnswlib::HierarchicalNSW<float>(&space, graph_index_path);
+    hnswlib::MergeHierarchicalNSW<float>* alg_hnsw = new hnswlib::MergeHierarchicalNSW<float>(&space, max_elements, M, ef_construction);
 
-    // Warmup step before benchmarking
-    int warmup_ef = min_ef;  // Use a small ef value for warmup
-    alg_hnsw->setEf(warmup_ef);
-
-    std::cout << "Performing warmup..." << std::endl;
-
-    // Perform warmup queries
-    ParallelFor(0, query_elements, num_threads, [&](size_t row, size_t threadId) {
-        std::priority_queue<std::pair<float, hnswlib::labeltype>> result = alg_hnsw->searchKnn(query + query_dim * row, k);
-        // Discard the results, as this is just a warmup
-    });
-    std::cout << "Warmup completed." << std::endl;
-
-
-    std::cout << "ef " << "Recall@" << k << " " << "QPS " << std::endl;
-    for (int ef = min_ef; ef <= max_ef; ef += stepsize) {
-        alg_hnsw->setEf(ef);
-
-        std::vector<std::vector<hnswlib::labeltype>> neighbors(query_elements);
-        auto s = std::chrono::high_resolution_clock::now();
-        ParallelFor(0, query_elements, num_threads, [&](size_t row, size_t threadId) {
-            std::priority_queue<std::pair<float, hnswlib::labeltype>> result = alg_hnsw->searchKnn(query + query_dim * row, k);
-            for (int i = 0; i < k; i++) {
-                hnswlib::labeltype label = result.top().second;
-                neighbors[row].push_back(label);
-                result.pop();
-            }
-        });
-        auto e = std::chrono::high_resolution_clock::now();
-        double latency = std::chrono::duration<double>(e - s).count();
-        double QPS = query_elements / latency;
-
-        std::vector<double> recalls;
-        double recall = compute_recall(neighbors, gt, recalls);
-
-        if (ef == min_ef)  // write header
-            write_csv_data(performance_csv, ef, recall, QPS, false);
-        else
-            write_csv_data(performance_csv, ef, recall, QPS, true);
-
-        std::cout << ef << " " << recall << " " << QPS << std::endl;
+    std::vector<hnswlib::HierarchicalNSW<float>*> graphs(graph_num);
+    for (unsigned i = 0; i < graph_num; i++)
+    {
+        std::string index_file = graph_index_file + std::to_string(i+1) + "_ef" + std::to_string(sub_ef) + "_M" + std::to_string(sub_M) + ".hnsw";
+        hnswlib::L2Space space(dim);
+        hnswlib::HierarchicalNSW<float>* hnsw = new hnswlib::HierarchicalNSW<float>(&space);
+        hnsw->loadIndex(index_file, &space);
+        graphs[i] = hnsw;
     }
+
+    int num_threads = 72;       // Number of threads for operations with index
+    omp_set_num_threads(num_threads);
+
+    auto s = std::chrono::high_resolution_clock::now();
+    alg_hnsw->mgraph_merge(graph_num, graphs, params);
+    auto e = std::chrono::high_resolution_clock::now();
+
+    double merge_time = std::chrono::duration<double>(e - s).count();
+
+    std::cout << "Merge time: " << merge_time << " s; " << merged_nsg_path.substr(merged_nsg_path.find_last_of('/') + 1) << std::endl;
+
+    alg_hnsw->saveIndex(merged_nsg_path);
 
     delete[] data;
     delete alg_hnsw;
     return 0;
 }
+
+// L : G = 427136 : 72864 = 5.8621
+// L : G = 427220 : 72780 = 5.87002
+// Merge time: 11.3352 s; deep1M_random_RGTM_et0_ef80_M32.hnsw
+
+// L : G = 427136 : 72864 = 5.8621
+// L : G = 427220 : 72780 = 5.87002
+// Merge time: 15.9331 s; deep1M_random_RGTM_et0_ef80_M32.hnsw

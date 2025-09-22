@@ -1,6 +1,5 @@
 //
-// Created by jlc on 9/15/25.
-//
+// Created by jlc on 9/19/25.
 //
 #include "../../hnswlib/hnswlib.h"
 #include <thread>
@@ -65,9 +64,9 @@ inline void ParallelFor(size_t start, size_t end, size_t numThreads, Function fn
 
 
 int main(int argc, char** argv) {
-    if (argc != 10) {
+    if (argc != 5) {
         std::cout << argv[0]
-                  << "data_file query_file gt_file graph_index_path k min_ef max_ef stepsize performance_csv"
+                  << "data_file ef_construction M graph_index_path"
                   << std::endl;
         exit(-1);
     }
@@ -75,69 +74,26 @@ int main(int argc, char** argv) {
     float* data = NULL;
     int max_elements, dim;
     load_data(argv[1], data, max_elements, dim);
-
-    float* query = NULL;
-    int query_elements, query_dim;
-    load_data(argv[2], query, query_elements, query_dim);
-
-    // auto dist_gt = read_fvecs(argv[1]);
-    std::vector<std::vector<unsigned>> gt = read_ivecs(argv[3]);
-
+    int ef_construction = atoi(argv[2]);
+    int M = atoi(argv[3]);
     std::string graph_index_path = std::string(argv[4]);
-    int k = atoi(argv[5]);
-    int min_ef = atoi(argv[6]);
-    int max_ef = atoi(argv[7]);
-    int stepsize = atoi(argv[8]);
-    std::string performance_csv = std::string(argv[9]);
 
-    int num_threads = 8;       // Number of threads for operations with index
+    int num_threads = 72;       // Number of threads for operations with index
 
     // Initing index
     hnswlib::L2Space space(dim);
-    hnswlib::HierarchicalNSW<float>* alg_hnsw = new hnswlib::HierarchicalNSW<float>(&space, graph_index_path);
+    hnswlib::HierarchicalNSW<float>* alg_hnsw = new hnswlib::HierarchicalNSW<float>(&space, max_elements, M, ef_construction);
 
-    // Warmup step before benchmarking
-    int warmup_ef = min_ef;  // Use a small ef value for warmup
-    alg_hnsw->setEf(warmup_ef);
-
-    std::cout << "Performing warmup..." << std::endl;
-
-    // Perform warmup queries
-    ParallelFor(0, query_elements, num_threads, [&](size_t row, size_t threadId) {
-        std::priority_queue<std::pair<float, hnswlib::labeltype>> result = alg_hnsw->searchKnn(query + query_dim * row, k);
-        // Discard the results, as this is just a warmup
+    auto s = std::chrono::high_resolution_clock::now();
+    ParallelFor(0, max_elements, num_threads, [&](size_t row, size_t threadId) {
+        alg_hnsw->addPoint_level0_only((void*)(data + dim * row), row); // fn(row, threadId)在threadId号线程中执行alg_hnsw->addPoint, row: partition id
     });
-    std::cout << "Warmup completed." << std::endl;
+    auto e = std::chrono::high_resolution_clock::now();
 
+    double index_time = std::chrono::duration<double>(e - s).count();
+    std::cout << "Index time: " << index_time << " s; " << graph_index_path.substr(graph_index_path.find_last_of('/') + 1) << std::endl;
 
-    std::cout << "ef " << "Recall@" << k << " " << "QPS " << std::endl;
-    for (int ef = min_ef; ef <= max_ef; ef += stepsize) {
-        alg_hnsw->setEf(ef);
-
-        std::vector<std::vector<hnswlib::labeltype>> neighbors(query_elements);
-        auto s = std::chrono::high_resolution_clock::now();
-        ParallelFor(0, query_elements, num_threads, [&](size_t row, size_t threadId) {
-            std::priority_queue<std::pair<float, hnswlib::labeltype>> result = alg_hnsw->searchKnn(query + query_dim * row, k);
-            for (int i = 0; i < k; i++) {
-                hnswlib::labeltype label = result.top().second;
-                neighbors[row].push_back(label);
-                result.pop();
-            }
-        });
-        auto e = std::chrono::high_resolution_clock::now();
-        double latency = std::chrono::duration<double>(e - s).count();
-        double QPS = query_elements / latency;
-
-        std::vector<double> recalls;
-        double recall = compute_recall(neighbors, gt, recalls);
-
-        if (ef == min_ef)  // write header
-            write_csv_data(performance_csv, ef, recall, QPS, false);
-        else
-            write_csv_data(performance_csv, ef, recall, QPS, true);
-
-        std::cout << ef << " " << recall << " " << QPS << std::endl;
-    }
+    alg_hnsw->saveIndex(graph_index_path);
 
     delete[] data;
     delete alg_hnsw;
