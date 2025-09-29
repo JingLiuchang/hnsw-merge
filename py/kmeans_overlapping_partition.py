@@ -77,6 +77,7 @@ if __name__ == "__main__":
     np.random.seed(42)  # For reproducibility
     perm = np.random.permutation(num_data)
     data = data[perm]
+    utils.fvecs_write(f'/home/jlc/hnswlib/data/{db}/overlap/multi-index-data/{num_clusters}parts/{db}_shuffle_base.fvecs', data)
 
     # Use a subset of data for training (min(sample_size, num_data))
     train_data = data[:min(sample_size, num_data)]
