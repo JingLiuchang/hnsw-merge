@@ -4,37 +4,52 @@ import matplotlib.pyplot as plt
 import re
 
 # 数据路径和文件名
-base_path = f'/home/jlc/hnswlib/data/deep1M/kmeans/performance/5parts'
+base_path = f'/home/jlc/hnswlib/data/deep1M/random/performance/5parts'
 
-csv_files = [
-    'deep1M_kmeans_BuildAsOne_ef80_M32.csv',
-    'deep1M_kmeans_NGM_et0_ef80_M32.csv',
-    'deep1M_kmeans_NGM_et0_ef20_M32.csv',
-    'deep1M_kmeans_RGTM_et0_ef80_10_3_M32.csv',
-    'deep1M_kmeans_RGTM_et0_ef80_10_5_M32.csv',
-    'deep1M_kmeans_RGTM_et0_ef40_20_5_M32.csv',
-    'deep1M_kmeans_RGTM_et0_ef40_20_3_M32.csv',
-    'deep1M_kmeans_RGTM_et0_ef20_10_5_M32.csv',
-    'deep1M_kmeans_RGTM_et0_ef20_10_3_M32.csv',
-    'deep1M_kmeans_RGTM_et0_ef20_5_3_M32.csv'
-]
-
-line_names = ['BuildAsOne_ef80_M32', 'NGM_et0_ef80_M32', 'NGM_et0_ef20_M32', 'RGTM_et0_ef80_10_3_M32', 'RGTM_et0_ef80_10_5_M32', 'RGTM_et0_ef40_20_5_M32', 'RGTM_et0_ef40_20_3_M32', 'RGTM_et0_ef20_10_5_M32', 'RGTM_et0_ef20_10_3_M32', 'RGTM_et0_ef20_5_3_M32']
-
+def plot(filename, name, color):
+    with open(filename, 'r') as f:
+        reader = csv.reader(f)
+        next(reader)  # 跳过表头（如果有的话）
+        recalls = []
+        latencies = []
+        for row in reader:
+            L, recall, latency = map(float, row)
+            recalls.append(recall)
+            latencies.append(latency)
+        sorted_data = sorted(zip(recalls, latencies))
+        recalls = [data[0] for data in sorted_data]
+        latencies = [data[1] for data in sorted_data]
+        plt.plot(recalls, latencies, marker='o', linestyle='-', label=name, color=color)
 
 # csv_files = [
-#     'deep1M_random_BuildAsOne_ef80_M32.csv',
-#     'deep1M_random_NGM_et0_ef80_M32.csv',
-#     'deep1M_random_NGM_et0_ef20_M32.csv',
-#     'deep1M_random_RGTM_et0_ef80_10_5_M32.csv',
-#     'deep1M_random_RGTM_et0_ef80_30_5_M32.csv',
-#     'deep1M_random_RGTM_et0_ef40_20_5_M32.csv',
-#     'deep1M_random_RGTM_et0_ef20_10_5_M32.csv'
+#     'deep1M_kmeans_BuildAsOne_ef80_M32.csv',
+#     'deep1M_kmeans_NGM_et0_ef80_M32.csv',
+#     'deep1M_kmeans_NGM_et0_ef20_M32.csv',
+#     'deep1M_kmeans_RGTM_et0_ef80_10_3_M32.csv',
+#     'deep1M_kmeans_RGTM_et0_ef80_10_5_M32.csv',
+#     'deep1M_kmeans_RGTM_et0_ef40_20_5_M32.csv',
+#     'deep1M_kmeans_RGTM_et0_ef40_20_3_M32.csv',
+#     'deep1M_kmeans_RGTM_et0_ef20_10_5_M32.csv',
+#     'deep1M_kmeans_RGTM_et0_ef20_10_3_M32.csv',
+#     'deep1M_kmeans_RGTM_et0_ef20_5_3_M32.csv'
 # ]
 #
-# line_names = ['BuildAsOne_ef80_M32', 'NGM_et0_ef80_M32', 'NGM_et0_ef20_M32',
-#               'RGTM_et0_ef80_10_5_M32', 'RGTM_et0_ef80_30_5_M32',
-#               'RGTM_et0_ef40_20_5_M32', 'RGTM_et0_ef20_10_5_M32']
+# line_names = ['BuildAsOne_ef80_M32', 'NGM_et0_ef80_M32', 'NGM_et0_ef20_M32', 'RGTM_et0_ef80_10_3_M32', 'RGTM_et0_ef80_10_5_M32', 'RGTM_et0_ef40_20_5_M32', 'RGTM_et0_ef40_20_3_M32', 'RGTM_et0_ef20_10_5_M32', 'RGTM_et0_ef20_10_3_M32', 'RGTM_et0_ef20_5_3_M32']
+
+
+csv_files = [
+    'deep1M_random_BuildAsOne_ef80_M32.csv',
+    'deep1M_random_NGM_et0_ef80_M32.csv',
+    'deep1M_random_NGM_et0_ef20_M32.csv',
+    'deep1M_random_RGTM_et0_ef80_10_5_M32.csv',
+    'deep1M_random_RGTM_et0_ef80_30_5_M32.csv',
+    'deep1M_random_RGTM_et0_ef40_20_5_M32.csv',
+    'deep1M_random_RGTM_et0_ef20_10_5_M32.csv'
+]
+
+line_names = ['BuildAsOne_ef80_M32', 'NGM_et0_ef80_M32', 'NGM_et0_ef20_M32',
+              'RGTM_et0_ef80_10_5_M32', 'RGTM_et0_ef80_30_5_M32',
+              'RGTM_et0_ef40_20_5_M32', 'RGTM_et0_ef20_10_5_M32']
 
 # 为每个line_name定义固定颜色
 colors = plt.cm.tab10(np.linspace(0, 1, len(line_names)))  # 使用tab10配色方案
@@ -67,6 +82,15 @@ if __name__ == "__main__":
         except Exception as e:
             print(f"处理文件 {csv_file} 时出错: {e}")
 
+    plot('/home/jlc/hnswlib/data/deep1M/overlap/performance/5parts/deep1M_overlap_ef80_M32.csv', 'overlap_ef80_M32', 'black')
+    plot('/home/jlc/hnswlib/data/deep1M/overlap/performance/5parts/deep1M_overlap_ef40_M32.csv', 'overlap_ef40_M32', 'gray')
+
+    targets = line_names
+    targets = targets + ['overlap_ef80_M32', 'overlap_ef40_M32']
+    color_map['overlap_ef80_M32'] = 'black'
+    color_map['overlap_ef40_M32'] = 'gray'
+
+
     plt.xlabel('Recall')
     plt.ylabel('QPS')
     plt.title('Recall vs Latency for Different Algorithms')
@@ -84,7 +108,6 @@ if __name__ == "__main__":
     log_file = f'{base_path}/RGTM_merge.log'
     merge_times = []
     names = []
-
     with open(log_file, 'r') as f:
         lines = f.readlines()
         for line in lines:
@@ -95,15 +118,21 @@ if __name__ == "__main__":
                 merge_time = float(merge_time_match.group(1)) if merge_time_match else None
 
                 # 提取deep1M_random_X.hnsw中的X部分
-                hnsw_pattern = fr"deep1M_kmeans_(.+)\.hnsw"
+                hnsw_pattern = fr"deep1M_random_(.+)\.hnsw"
                 hnsw_match = re.search(hnsw_pattern, line)
                 x_part = hnsw_match.group(1) if hnsw_match else None
 
-                if x_part not in line_names:
+                if not x_part:
+                    hnsw_pattern = fr"deep1M_(.+)\.hnsw"
+                    hnsw_match = re.search(hnsw_pattern, line)
+                    x_part = hnsw_match.group(1) if hnsw_match else None
+
+                if x_part not in targets:
                     continue
 
                 merge_times.append(merge_time)
                 names.append(x_part)
+
 
     plt.figure(figsize=(12, 6))
     bars = plt.bar(names, merge_times, color=[color_map[name] for name in names])  # 使用固定颜色

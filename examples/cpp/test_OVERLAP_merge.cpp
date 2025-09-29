@@ -250,8 +250,8 @@ int main(int argc, char** argv) {
     double merge_time = std::chrono::duration<double>(e - s).count();
     time_cost += merge_time;
 
-    std::cout << "Merge time: " << merge_time << " s" << std::endl;
-    std::cout << "Total time: " << time_cost << " s; " << merged_nsg_path.substr(merged_nsg_path.find_last_of('/') + 1) << std::endl;
+    std::cout << "Merge shards time: " << merge_time << " s" << std::endl;
+    std::cout << "Merge time: " << time_cost << " s; " << merged_nsg_path.substr(merged_nsg_path.find_last_of('/') + 1) << std::endl;
 
     alg_hnsw->saveIndex(merged_nsg_path);
 

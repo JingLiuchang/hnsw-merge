@@ -66,6 +66,7 @@ if __name__ == "__main__":
         kmeans_centroids_save_path = f'/home/jlc/hnswlib/data/{db}/overlap/multi-index-data/{num_clusters}parts/{db}_kmeans_centroids.fvecs'
         partition_save_path = f'/home/jlc/hnswlib/data/{db}/overlap/multi-index-data/{num_clusters}parts/'
         partition_index_path = f'/home/jlc/hnswlib/data/{db}/overlap/multi-index-merged/{num_clusters}parts/'
+        performance_path = f'/home/jlc/hnswlib/data/{db}/overlap/performance/{num_clusters}parts/'
         os.makedirs(os.path.dirname(partition_save_path), exist_ok=True)
         os.makedirs(os.path.dirname(partition_index_path), exist_ok=True)
 
