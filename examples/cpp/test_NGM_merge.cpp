@@ -66,9 +66,9 @@ inline void ParallelFor(size_t start, size_t end, size_t numThreads, Function fn
 
 
 int main(int argc, char** argv) {
-    if (argc != 11) {
+    if (argc != 12 && argc != 13) {
         std::cout << argv[0]
-                  << " data_file ef_construction M sub_ef sub_M graph_num graph_index_file merged_nsg_path ET ratio"
+                  << " data_file ef_construction M sub_ef sub_M graph_num graph_index_file merged_nsg_path ET ratio merge_order_selection [merge_order_file]"
                   << std::endl;
         exit(-1);
     }
@@ -85,11 +85,18 @@ int main(int argc, char** argv) {
     std::string merged_nsg_path = std::string(argv[8]);
     int ET = atoi(argv[9]);
     float ratio = atof(argv[10]);
+    std::string merge_order = std::string(argv[11]);
+    std::string merge_order_file = "None";
+    if (argc == 13) {
+        merge_order_file = std::string(argv[12]);
+    }
 
     hnswlib::Parameters params;
     params.Set<bool>("early_terminate", ET);
     params.Set<float>("et_ratio", ratio);
     params.Set<std::string>("method", "NGM");
+    params.Set<std::string>("merge_order_selection", merge_order);
+    params.Set<std::string>("merge_order_file", merge_order_file);
     params.Set<bool>("print", true);
 
     // Initing index

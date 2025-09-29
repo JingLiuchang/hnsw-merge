@@ -16,6 +16,7 @@
 #include <memory>
 #include "parameter.h"
 #include <algorithm>
+#include "utils.h"
 
 namespace hnswlib {
 typedef unsigned int tableint;
@@ -1636,6 +1637,8 @@ class MergeHierarchicalNSW : public HierarchicalNSW<dist_t> {
     void mgraph_merge(unsigned m, std::vector<HierarchicalNSW<dist_t>*> graphs, const Parameters &parameters) // 直接update MergeHierarchicalNSW
     {
         std::string method = parameters.Get<std::string>("method");
+        std::string merge_order_selection = parameters.Get<std::string>("merge_order_selection");
+        std::string merge_order_file = parameters.Get<std::string>("merge_order_file");
 
         size_t num_element = 0;
         for (unsigned i = 0; i < m; ++i)
@@ -1655,7 +1658,85 @@ class MergeHierarchicalNSW : public HierarchicalNSW<dist_t> {
 
         // merge order selection
         std::vector<std::pair<unsigned, unsigned>> merge_order;
-        pairwise_merge_order(m, merge_order);
+        if (merge_order_selection == "pairwise")
+        {
+            pairwise_merge_order(m, merge_order);
+        }
+        else if (merge_order_selection == "mst")
+        {
+            if (merge_order_file == "None")
+            {
+                std::cerr << "Error: MST order file does not exist." << std::endl;
+                exit(1);
+            }
+            std::vector<std::vector<float>> mst = read_fvecs(merge_order_file);
+            for (unsigned i = 0; i < m; ++i)
+            {
+                for (unsigned j = 0; j < m; ++j)
+                {
+                    if (mst[i][j] != 0)
+                    {
+                        merge_order.emplace_back(i, j);
+                    }
+                }
+            }
+        }
+        else if (merge_order_selection == "circle")
+        {
+            std::vector<unsigned> nodes(m);
+
+            for (unsigned i = 0; i < m; ++i) {
+                nodes[i] = i;
+            }
+
+            unsigned seed = 42;  // 固定种子值
+            std::mt19937 g(seed); // 使用固定种子初始化生成器
+            std::shuffle(nodes.begin(), nodes.end(), g);
+
+            for (unsigned i = 0; i < m; ++i) {
+                merge_order.emplace_back(nodes[i], nodes[(i + 1) % m]);
+            }
+        }
+        else if (merge_order_selection == std::string("path"))
+        {
+            std::vector<unsigned> nodes(m);
+
+            for (unsigned i = 0; i < m; ++i) {
+                nodes[i] = i;
+            }
+
+            unsigned seed = 42;  // 固定种子值
+            std::mt19937 g(seed); // 使用固定种子初始化生成器
+            std::shuffle(nodes.begin(), nodes.end(), g);
+
+            for (unsigned i = 0; i < m-1; ++i) {
+                merge_order.emplace_back(nodes[i], nodes[(i + 1) % m]);
+            }
+        }
+        else if (merge_order_selection == "graph")
+        {
+            if (merge_order_file == "None")
+            {
+                std::cerr << "Error: graph order file does not exist." << std::endl;
+                exit(1);
+            }
+            std::vector<std::vector<float>> G = read_fvecs(merge_order_file);
+            for (unsigned i = 0; i < m; ++i)
+            {
+                for (unsigned j = 0; j < m; ++j)
+                {
+                    if (G[i][j] != 0)
+                    {
+                        merge_order.emplace_back(i, j);
+                    }
+                }
+            }
+        }
+        else
+        {
+            std::cerr << "Error: unknown merge_order_selection " << merge_order_selection << std::endl;
+            exit(1);
+        }
 
         // start merging
         if (method == "NGM")

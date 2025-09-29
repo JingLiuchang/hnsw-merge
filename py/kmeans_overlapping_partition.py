@@ -4,6 +4,7 @@ import utils
 import os
 import argparse
 import struct
+from time import time
 
 # Parameters
 sample_size = 256000
@@ -89,6 +90,7 @@ if __name__ == "__main__":
 
     # Save centroids using utils.fvecs_write
     utils.fvecs_write(kmeans_centroids_save_path, kmeans.centroids)
+
 
     # Assign each data point to kbase clusters (Merge order selection)
     print(f"Assigning each data point to {kbase} nearest clusters...")
