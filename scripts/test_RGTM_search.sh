@@ -1,11 +1,17 @@
 #!/bin/bash
 
 # Define the executable and fixed input/output paths
+#EXECUTABLE="/home/jlc/hnswlib/cmake-build-debug/test_hnsw_search"
+#DATA_FILE="/home/jlc/hnswlib/data/deep1M/kmeans/bi-index-data/deep1M_kmeans_base.fvecs"
+#QUERY_FILE="/home/jlc/hnswlib/data/deep1M/deep1M_query.fvecs"
+#GT_FILE="/home/jlc/hnswlib/data/deep1M/kmeans/bi-index-data/deep1M_kmeans_groundtruth.ivecs"
+#OUTPUT_PATH="/home/jlc/hnswlib/data/deep1M/kmeans/performance/bi"
+
 EXECUTABLE="/home/jlc/hnswlib/cmake-build-debug/test_hnsw_search"
-DATA_FILE="/home/jlc/hnswlib/data/deep1M/random/bi-index-data/deep1M_random_base.fvecs"
+DATA_FILE="/home/jlc/hnswlib/data/deep1M/kmeans/multi-index-data/5parts/deep1M_kmeans_base.fvecs"
 QUERY_FILE="/home/jlc/hnswlib/data/deep1M/deep1M_query.fvecs"
-GT_FILE="/home/jlc/hnswlib/data/deep1M/random/bi-index-data/deep1M_random_groundtruth.ivecs"
-OUTPUT_PATH="/home/jlc/hnswlib/data/deep1M/random/performance/bi"
+GT_FILE="/home/jlc/hnswlib/data/deep1M/kmeans/multi-index-data/5parts/deep1M_kmeans_groundtruth.ivecs"
+OUTPUT_PATH="/home/jlc/hnswlib/data/deep1M/kmeans/performance/5parts"
 
 # Parameter combinations for ef80_G_L_S
 PARAMS=(
@@ -40,8 +46,8 @@ for param in "${PARAMS[@]}"; do
   IFS="_" read -r G L S <<< "$param"
 
   # Construct the input HNSW graph file name and output CSV file name
-  GRAPH_INDEX_FILE="/home/jlc/hnswlib/data/deep1M/random/bi-index-merged/deep1M_random_RGTM_et0_ef${G}_${L}_${S}_M32.hnsw"
-  PERFORMANCE_CSV="${OUTPUT_PATH}/deep1M_random_RGTM_et0_ef${G}_${L}_${S}_M32.csv"
+  GRAPH_INDEX_FILE="/home/jlc/hnswlib/data/deep1M/kmeans/multi-index-merged/5parts/deep1M_kmeans_RGTM_et0_ef${G}_${L}_${S}_M32.hnsw"
+  PERFORMANCE_CSV="${OUTPUT_PATH}/deep1M_kmeans_RGTM_et0_ef${G}_${L}_${S}_M32.csv"
 
   # Run the search command
   echo "Running: $EXECUTABLE $DATA_FILE $QUERY_FILE $GT_FILE $GRAPH_INDEX_FILE $K $MIN_EF $MAX_EF $STEPSIZE $PERFORMANCE_CSV"

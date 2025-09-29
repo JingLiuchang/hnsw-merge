@@ -11,6 +11,7 @@
 #include <stdlib.h>
 #include <assert.h>
 #include <unordered_set>
+#include <unordered_map>
 #include <list>
 #include <memory>
 #include "parameter.h"
@@ -1677,6 +1678,145 @@ class MergeHierarchicalNSW : public HierarchicalNSW<dist_t> {
         }
     }
 
+    void overlap_merge(float* data, int dim, unsigned m,
+        std::vector<HierarchicalNSW<dist_t>*> graphs,
+        const std::vector<std::pair<labeltype, unsigned>>& assignments,
+        std::vector<std::vector<labeltype>>& idmaps,
+        std::vector<std::unordered_map<unsigned, size_t>>& global_to_local_map,
+        const Parameters &parameters) // 直接update MergeHierarchicalNSW
+    {
+        bool print = parameters.Get<bool>("print");
+        unsigned kbase = parameters.Get<unsigned>("kbase");
+
+        size_t num_element = 0;
+        for (unsigned i = 0; i < m; ++i)
+        {
+            num_element += graphs[i]->max_elements_;
+        }
+
+        if (num_element != kbase * max_elements_ or graphs.size() != m)
+        {
+            std::cerr << "Error: total number of elements or number of graphs does not match the initialized value." << std::endl;
+            return;
+        }
+
+        num_element = max_elements_;
+
+        // std::random_device rng;
+        // std::mt19937 urng(rng());
+        std::mt19937 urng(42);
+
+        std::vector<bool> merged(num_element, 0);
+        std::vector<bool> nhood_set(num_element, 0);
+        std::vector<labeltype> final_nhood;
+
+        unsigned short int nnbrs = 0, centroid_nnbrs = 0;
+        labeltype cur_id = 0;
+        for (std::pair<labeltype, unsigned> gid_cid : assignments)
+        {
+            labeltype global_label = gid_cid.first; // merge 此点
+            unsigned centroid_id = gid_cid.second;
+            labeltype local_label = global_to_local_map[global_label][centroid_id];
+            HierarchicalNSW<dist_t>* graph = graphs[centroid_id];
+            tableint local_internal_id = graph->label_lookup_[local_label];
+
+            if (cur_id < global_label)
+            {
+                cur_element_count ++;
+                assert(cur_id == global_label - 1);
+                std::shuffle(final_nhood.begin(), final_nhood.end(), urng);
+                nnbrs = (unsigned short int)(std::min)(final_nhood.size(), maxM0_);
+
+                memset(data_level0_memory_ + cur_id * size_data_per_element_ + offsetLevel0_, 0, size_data_per_element_);
+                // Initialisation of the data and label
+                memcpy(getExternalLabeLp(cur_id), &cur_id, sizeof(labeltype)); // label = external id = partition id, 写到cur_c的数据的label位上
+                memcpy(getDataByInternalId(cur_id), data + cur_id * dim, data_size_); // internal id仅代表在level0的图索引内存表示中的行号, 写入cur_c的数据的向量位
+                linklistsizeint* ll_cur = get_linklist0(cur_id);
+                setListCount(ll_cur, nnbrs);
+                tableint *linklist = (tableint*)(ll_cur + 1);
+                for (unsigned i = 0; i < nnbrs; ++i)
+                {
+                    if (linklist[i])
+                    {
+                        throw std::runtime_error("Possible memory corruption: linklist[i] is not empty");
+                    }
+                    linklist[i] = final_nhood[i];
+                }
+                if (print && cur_id % 49999 == 1)
+                {
+                    std::cout << "\rmerged " << 100 * cur_id / num_element << " %..." << std::flush;
+                }
+                cur_id = global_label;
+                nnbrs = 0;
+                for (labeltype &p : final_nhood)
+                    nhood_set[p] = 0;
+                final_nhood.clear();
+            }
+
+            linklistsizeint* cur_element_data = graph->get_linklist0(local_internal_id);
+            centroid_nnbrs = graph->getListCount(cur_element_data);
+
+            if (centroid_nnbrs == 0)
+            {
+                std::cerr << "Warning: centroid " << centroid_id << " , internal_node " << local_internal_id << " has no neighbor!" << std::endl;
+            }
+
+            std::vector<labeltype> centroid_nhood(centroid_nnbrs);
+            for (unsigned i = 0; i < centroid_nnbrs; ++i)
+            {
+                tableint neighbor_internalid = *((tableint*)(cur_element_data + 1) + i);
+                labeltype neighbor_local_label = graph->getExternalLabel(neighbor_internalid);
+                centroid_nhood[i] = neighbor_local_label;
+            }
+
+            for (unsigned i = 0; i < centroid_nnbrs; ++i)
+            {
+                if (nhood_set[idmaps[centroid_id][centroid_nhood[i]]] == 0)
+                {
+                    nhood_set[idmaps[centroid_id][centroid_nhood[i]]] = 1;
+                    final_nhood.emplace_back(idmaps[centroid_id][centroid_nhood[i]]);
+                }
+            }
+        }
+        cur_element_count ++;
+        assert(cur_id == num_element - 1);
+        assert(cur_element_count == num_element);
+        std::shuffle(final_nhood.begin(), final_nhood.end(), urng);
+        nnbrs = (unsigned short int)(std::min)(final_nhood.size(), maxM0_);
+
+        memset(data_level0_memory_ + cur_id * size_data_per_element_ + offsetLevel0_, 0, size_data_per_element_);
+        // Initialisation of the data and label
+        memcpy(getExternalLabeLp(cur_id), &cur_id, sizeof(labeltype)); // label = external id = partition id, 写到cur_c的数据的label位上
+        memcpy(getDataByInternalId(cur_id), data + cur_id * dim, data_size_); // internal id仅代表在level0的图索引内存表示中的行号, 写入cur_c的数据的向量位
+        linklistsizeint* ll_cur = get_linklist0(cur_id);
+        setListCount(ll_cur, nnbrs);
+        tableint *linklist = (tableint*)(ll_cur + 1);
+        for (unsigned i = 0; i < nnbrs; ++i)
+        {
+            if (linklist[i])
+            {
+                throw std::runtime_error("Possible memory corruption: linklist[i] is not empty");
+            }
+            linklist[i] = final_nhood[i];
+        }
+
+        maxlevel_ = std::numeric_limits<int>::min();
+
+        for (unsigned cid = 0; cid < m; ++cid)
+        {
+            HierarchicalNSW<dist_t>* graph = graphs[cid];
+            if (graph->maxlevel_ > maxlevel_) {
+                maxlevel_ = graph->maxlevel_;
+                labeltype graph_ep = graph->getExternalLabel(graph->enterpoint_node_);
+                enterpoint_node_ = idmaps[cid][graph_ep];
+            }
+        }
+
+        maxlevel_ = 0; // 假设G只有最底层
+
+        std::cout << std::endl;
+    }
+
     // ET相关
     void update_hits_counter(const std::vector<tableint>& selectedNeighbors,
                         const std::pair<size_t, size_t>& hit_range,
@@ -1947,6 +2087,60 @@ class MergeHierarchicalNSW : public HierarchicalNSW<dist_t> {
             if (total_hits >= target_hits) {
                 should_terminate.store(true, std::memory_order_release);
             }
+        }
+        if (et) {
+            std::cout << "ET early terminate at " << total_hits.load(std::memory_order_relaxed) << " hits." << std::endl;
+        }
+    }
+
+    void fxy_merge(unsigned m, std::vector<HierarchicalNSW<dist_t>*> graphs, const Parameters &parameters) // 直接update MergeHierarchicalNSW
+    {
+        std::string method = parameters.Get<std::string>("method");
+
+        size_t num_element = 0;
+        for (unsigned i = 0; i < m; ++i)
+        {
+            num_element += graphs[i]->max_elements_;
+        }
+
+        if (num_element != max_elements_ or graphs.size() != m)
+        {
+            std::cerr << "Error: total number of elements or number of graphs does not match the initialized value." << std::endl;
+            return;
+        }
+
+        // 初始化G
+        initialize_mergeid_lookup(graphs);
+        init_merge_graph_level0(graphs);
+
+        // merge order selection
+        std::vector<std::pair<unsigned, unsigned>> merge_order;
+        pairwise_merge_order(m, merge_order);
+
+        // start merging
+        if (method == "NGM")
+        {
+            for (auto&& p : merge_order) { // pairwise merge
+                if (parameters.Get<bool>("reverse"))
+                {
+                    NGM_merge_into_later(graphs, p.second, p.first, ef_construction_, parameters); // second merge into first
+                }
+                else
+                {
+                    NGM_merge_into_later(graphs, p.first, p.second, ef_construction_, parameters); // first merge into second
+                }
+            }
+        }
+        else if (method == "RGTM")
+        {
+            for (auto&& p : merge_order) { // pairwise merge
+                RGTM_merge_into_later(graphs, p.first, p.second, parameters); // first merge into second
+                RGTM_merge_into_later(graphs, p.second, p.first, parameters); // second merge into first
+            }
+        }
+        else
+        {
+            std::cerr << "Error: unknown method " << method << std::endl;
         }
     }
 };

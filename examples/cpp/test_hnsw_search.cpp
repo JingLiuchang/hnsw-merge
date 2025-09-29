@@ -72,9 +72,9 @@ int main(int argc, char** argv) {
         exit(-1);
     }
 
-    float* data = NULL;
-    int max_elements, dim;
-    load_data(argv[1], data, max_elements, dim);
+    // float* data = NULL;
+    // int max_elements, dim;
+    // safe_load_data(argv[1], data, max_elements, dim);
 
     float* query = NULL;
     int query_elements, query_dim;
@@ -82,6 +82,7 @@ int main(int argc, char** argv) {
 
     // auto dist_gt = read_fvecs(argv[1]);
     std::vector<std::vector<unsigned>> gt = read_ivecs(argv[3]);
+    std::vector<std::vector<float>> dists_gt = read_fvecs("./data/sift/sift_distance.fvecs");
 
     std::string graph_index_path = std::string(argv[4]);
     int k = atoi(argv[5]);
@@ -93,7 +94,7 @@ int main(int argc, char** argv) {
     int num_threads = 8;       // Number of threads for operations with index
 
     // Initing index
-    hnswlib::L2Space space(dim);
+    hnswlib::L2Space space(query_dim);
     hnswlib::HierarchicalNSW<float>* alg_hnsw = new hnswlib::HierarchicalNSW<float>(&space, graph_index_path);
 
     // Warmup step before benchmarking
@@ -139,7 +140,7 @@ int main(int argc, char** argv) {
         std::cout << ef << " " << recall << " " << QPS << std::endl;
     }
 
-    delete[] data;
+    // delete[] data;
     delete alg_hnsw;
     return 0;
 }

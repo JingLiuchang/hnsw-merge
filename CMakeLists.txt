@@ -106,14 +106,23 @@ if(HNSWLIB_EXAMPLES)
     add_executable(test_RGTM_merge examples/cpp/test_RGTM_merge.cpp)
     target_link_libraries(test_RGTM_merge hnswlib ${TBB_LIBRARIES})
 
+    add_executable(test_OVERLAP_merge examples/cpp/test_OVERLAP_merge.cpp)
+    target_link_libraries(test_OVERLAP_merge hnswlib ${TBB_LIBRARIES})
+
     add_executable(test_hnsw_index examples/cpp/test_hnsw_index.cpp)
-    target_link_libraries(test_hnsw_index hnswlib)
+    target_link_libraries(test_hnsw_index hnswlib ${TBB_LIBRARIES})
 
     add_executable(test_hnsw_level0_index examples/cpp/test_hnsw_level0_index.cpp)
-    target_link_libraries(test_hnsw_level0_index hnswlib)
+    target_link_libraries(test_hnsw_level0_index hnswlib ${TBB_LIBRARIES})
 
     add_executable(test_hnsw_search examples/cpp/test_hnsw_search.cpp)
     target_link_libraries(test_hnsw_search hnswlib ${TBB_LIBRARIES})
+
+    add_executable(draft examples/cpp/draft.cpp)
+    target_link_libraries(draft hnswlib ${TBB_LIBRARIES})
+
+    add_executable(fxy examples/cpp/fxy.cpp)
+    target_link_libraries(fxy hnswlib ${TBB_LIBRARIES})
 
     # tests
     add_executable(multivector_search_test tests/cpp/multivector_search_test.cpp)

@@ -1,6 +1,5 @@
 #!/bin/bash
 source params.sh
-ms=(2 5)
 
 for partition_method in "${partition_methods[@]}"; do
   for db in "${datasets[@]}"; do
@@ -34,6 +33,7 @@ for partition_method in "${partition_methods[@]}"; do
         echo "Unknown partition method: $partition_method. Use 'kmeans' or 'random'."
         exit 1
       fi
+
       # Build sub-indexes
       if [ "$m" -eq 2 ]; then
         mkdir -p "../data/${db}/${partition_method}/performance/bi"
@@ -46,19 +46,23 @@ for partition_method in "${partition_methods[@]}"; do
           $sub_M \
           ../data/${db}/${partition_method}/bi-index-merged/${db}_${partition_method}P${part}_ef${sub_ef}_M${sub_M}.hnsw
         done
+
         # BuildAsOne index
         ../cmake-build-debug/test_hnsw_level0_index \
         ../data/${db}/${partition_method}/bi-index-data/${db}_${partition_method}_base.fvecs \
         $ef \
         $M \
         ../data/${db}/${partition_method}/bi-index-merged/${db}_${partition_method}_BuildAsOne_ef${ef}_M${M}.hnsw
+
         # compute groundtruth
         python /home/jlc/hnswlib/py/gt_gpu.py \
         --base_file ../data/${db}/${partition_method}/bi-index-data/${db}_${partition_method}_base.fvecs \
         --query_file ../data/${db}/${db}_query.fvecs \
         --gt_file ../data/${db}/${partition_method}/bi-index-data/${db}_${partition_method}_groundtruth.ivecs \
         --dist_file ../data/${db}/${partition_method}/bi-index-data/${db}_${partition_method}_distance.fvecs
+
       elif [ "$m" -gt 2 ]; then
+
         mkdir -p "../data/${db}/${partition_method}/performance/${m}parts"
         # sub indexes
         for part in $(seq 1 $m); do
@@ -69,6 +73,7 @@ for partition_method in "${partition_methods[@]}"; do
           $sub_M \
           ../data/${db}/${partition_method}/multi-index-merged/${m}parts/${db}_${partition_method}P${part}_ef${sub_ef}_M${sub_M}.hnsw
         done
+
         # BuildAsOne index
         ../cmake-build-debug/test_hnsw_level0_index \
         ../data/${db}/${partition_method}/multi-index-data/${m}parts/${db}_${partition_method}_base.fvecs \
