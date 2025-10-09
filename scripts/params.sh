@@ -4,9 +4,9 @@ CONDA_PATH="/home/jlc/miniconda3"
 source $CONDA_PATH/etc/profile.d/conda.sh
 conda activate myenv
 
-datasets=("sift")
+datasets=("deep10M")
 partition_methods=("kmeans" "random" "overlap")
-ms=(2 10 100)
+ms=(10 20)
 
 echo "Activated conda environment: "
 which python

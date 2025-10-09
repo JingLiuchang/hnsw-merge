@@ -1,6 +1,6 @@
 #!/bin/bash
 source params.sh
-
+{
 for partition_method in "${partition_methods[@]}"; do
   for db in "${datasets[@]}"; do
     if [ "$db" == "sift" ]; then
@@ -9,6 +9,11 @@ for partition_method in "${partition_methods[@]}"; do
       sub_ef=50
       sub_M=16
     elif [ "$db" == "deep1M" ]; then
+      ef=80
+      M=32
+      sub_ef=40
+      sub_M=16
+    elif [ "$db" == "deep10M" ]; then
       ef=80
       M=32
       sub_ef=40
@@ -91,3 +96,4 @@ for partition_method in "${partition_methods[@]}"; do
     done
   done
 done
+} 2>&1 | tee build-subgraph.log

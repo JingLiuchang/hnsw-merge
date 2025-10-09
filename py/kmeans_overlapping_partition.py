@@ -158,3 +158,45 @@ if __name__ == "__main__":
 
     for cid in range(num_clusters):
         print(f"Centroid {cid}: {len(idmaps[cid])} data points")
+
+    # 重叠情况
+    print("\n" + "="*80)
+    print("Overlap Analysis for Each Cluster")
+    print("="*80)
+
+    for cid in range(num_clusters):
+        if len(idmaps[cid]) == 0:
+            continue
+
+        # 统计该聚类中每个数据点的出现次数
+        exclusive_count = 0  # 独有的数据点
+        shared_count = 0     # 共享的数据点
+        shared_with = {}     # 与哪些聚类共享: {other_cid: count}
+
+        for global_id in idmaps[cid]:
+            # 查看这个global_id出现在多少个聚类中
+            clusters_containing = global_to_local_map[global_id]
+
+            if len(clusters_containing) == 1:
+                # 只在当前聚类中
+                exclusive_count += 1
+            else:
+                # 被多个聚类共享
+                shared_count += 1
+                # 统计与哪些聚类共享
+                for other_cid in clusters_containing.keys():
+                    if other_cid != cid:
+                        shared_with[other_cid] = shared_with.get(other_cid, 0) + 1
+
+        total = len(idmaps[cid])
+        print(f"\nCluster {cid+1}:")
+        print(f"  Total vectors: {total}")
+        print(f"  Exclusive (only in this cluster): {exclusive_count} ({exclusive_count/total*100:.2f}%)")
+        print(f"  Shared (in multiple clusters): {shared_count} ({shared_count/total*100:.2f}%)")
+
+        if shared_with:
+            print(f"  Shared with other clusters:")
+            # 按共享数量排序
+            sorted_shared = sorted(shared_with.items(), key=lambda x: x[1], reverse=True)
+            for other_cid, count in sorted_shared[:5]:  # 只显示前5个
+                print(f"    - Cluster {other_cid+1}: {count} vectors ({count/total*100:.2f}%)")

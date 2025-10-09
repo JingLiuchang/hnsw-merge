@@ -89,8 +89,8 @@ int main(int argc, char** argv) {
     float ratio = atof(argv[12]);
     std::string merge_order = std::string(argv[13]);
     std::string merge_order_file = "None";
-    if (argc == 13) {
-        merge_order_file = std::string(argv[12]);
+    if (argc == 15) {
+        merge_order_file = std::string(argv[14]);
     }
 
     hnswlib::Parameters params;
