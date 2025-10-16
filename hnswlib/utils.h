@@ -8,19 +8,21 @@
 #ifndef UTILS_H
 #define UTILS_H
 
-void load_data(char* filename, float*& data, int& num,
-               int& dim) {  // load data with sift10K pattern
+void load_data(char* filename, float*& data, size_t& num,
+               size_t& dim) {  // load data with sift10K pattern
     std::ifstream in(filename, std::ios::binary);
     if (!in.is_open()) {
         std::cout << "open file error" << std::endl;
         exit(-1);
     }
-    in.read((char*)&dim, 4);
+    int dim_int;
+    in.read((char*)&dim_int, 4);
+    dim = (size_t)dim_int;
     //std::cout << "data dimension: " << dim << std::endl;
     in.seekg(0, std::ios::end);
     std::ios::pos_type ss = in.tellg();
     size_t fsize = (size_t)ss;
-    num = (int)(fsize / (dim + 1) / 4);
+    num = (size_t)(fsize / (dim + 1) / 4);
     data = new float[num * dim];
 
     in.seekg(0, std::ios::beg);
@@ -30,6 +32,48 @@ void load_data(char* filename, float*& data, int& num,
     }
     in.close();
 }
+// void load_data(char* filename, float*& data, int& num, int& dim) {
+//     std::ifstream in(filename, std::ios::binary);
+//     if (!in.is_open()) {
+//         std::cerr << "open file error" << std::endl;
+//         exit(-1);
+//     }
+//
+//     // 读取dim值
+//     in.read((char*)&dim, 4);
+//     if (!in || dim <= 0) {
+//         std::cerr << "Invalid dimension value: " << dim << std::endl;
+//         exit(-1);
+//     }
+//
+//     // 计算文件大小和数据条目数
+//     in.seekg(0, std::ios::end);
+//     size_t filesize = (size_t)in.tellg();
+//     if (filesize < 4) {
+//         std::cerr << "File is too small to contain valid data" << std::endl;
+//         exit(-1);
+//     }
+//     num = (int)((filesize - 4) / (dim * 4 + 4)); // 每条记录包含dim个float和4字节偏移
+//     data = new (std::nothrow) float[num * dim];
+//     if (!data) {
+//         std::cerr << "Failed to allocate memory for data" << std::endl;
+//         exit(-1);
+//     }
+//
+//     // 读取数据
+//     in.seekg(4, std::ios::beg);
+//     for (int i = 0; i < num; ++i) {
+//         in.seekg(4, std::ios::cur); // 跳过偏移
+//         in.read((char*)(data + i * dim), dim * 4);
+//         if (!in) {
+//             std::cerr << "Failed to read data at index " << i << std::endl;
+//             delete[] data;
+//             exit(-1);
+//         }
+//     }
+//
+//     in.close();
+// }
 
 void safe_load_data(char* filename, float*& data, int& num, int& dim) {
     std::ifstream in(filename, std::ios::binary);

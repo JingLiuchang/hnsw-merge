@@ -74,7 +74,7 @@ int main(int argc, char** argv) {
     }
 
     float* data = NULL;
-    int max_elements, dim;
+    size_t max_elements, dim;
     load_data(argv[1], data, max_elements, dim);
     int ef_construction = atoi(argv[2]);
     int M = atoi(argv[3]);

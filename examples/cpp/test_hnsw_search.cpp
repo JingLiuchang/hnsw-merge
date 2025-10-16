@@ -77,12 +77,12 @@ int main(int argc, char** argv) {
     // safe_load_data(argv[1], data, max_elements, dim);
 
     float* query = NULL;
-    int query_elements, query_dim;
+    size_t query_elements, query_dim;
     load_data(argv[2], query, query_elements, query_dim);
 
     // auto dist_gt = read_fvecs(argv[1]);
     std::vector<std::vector<unsigned>> gt = read_ivecs(argv[3]);
-    std::vector<std::vector<float>> dists_gt = read_fvecs("./data/sift/sift_distance.fvecs");
+    // std::vector<std::vector<float>> dists_gt = read_fvecs("./data/sift/sift_distance.fvecs");
 
     std::string graph_index_path = std::string(argv[4]);
     int k = atoi(argv[5]);

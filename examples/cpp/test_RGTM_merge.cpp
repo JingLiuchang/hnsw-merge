@@ -74,7 +74,7 @@ int main(int argc, char** argv) {
     }
 
     float* data = NULL;
-    int max_elements, dim;
+    size_t max_elements, dim;
     load_data(argv[1], data, max_elements, dim);
     int ef_construction = atoi(argv[2]);
     int local_ef = atoi(argv[3]);
@@ -92,6 +92,8 @@ int main(int argc, char** argv) {
     if (argc == 15) {
         merge_order_file = std::string(argv[14]);
     }
+
+    std::cout << "loaded metadata " << std::endl;
 
     hnswlib::Parameters params;
     params.Set<bool>("early_terminate", ET);

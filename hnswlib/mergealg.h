@@ -1660,10 +1660,12 @@ class MergeHierarchicalNSW : public HierarchicalNSW<dist_t> {
         std::vector<std::pair<unsigned, unsigned>> merge_order;
         if (merge_order_selection == "pairwise")
         {
+            std::cout << "Pairwise merge order selected." << std::endl;
             pairwise_merge_order(m, merge_order);
         }
         else if (merge_order_selection == "mst")
         {
+            std::cout << "MST merge order selected." << std::endl;
             if (merge_order_file == "None")
             {
                 std::cerr << "Error: MST order file does not exist." << std::endl;
@@ -1672,7 +1674,7 @@ class MergeHierarchicalNSW : public HierarchicalNSW<dist_t> {
             std::vector<std::vector<float>> mst = read_fvecs(merge_order_file);
             for (unsigned i = 0; i < m; ++i)
             {
-                for (unsigned j = 0; j < m; ++j)
+                for (unsigned j = 0; j < m; ++j) // TODO: bug here!!
                 {
                     if (mst[i][j] != 0)
                     {
@@ -1683,6 +1685,7 @@ class MergeHierarchicalNSW : public HierarchicalNSW<dist_t> {
         }
         else if (merge_order_selection == "circle")
         {
+            std::cout << "Circle merge order selected." << std::endl;
             std::vector<unsigned> nodes(m);
 
             for (unsigned i = 0; i < m; ++i) {
@@ -1699,6 +1702,7 @@ class MergeHierarchicalNSW : public HierarchicalNSW<dist_t> {
         }
         else if (merge_order_selection == std::string("path"))
         {
+            std::cout << "Path merge order selected." << std::endl;
             std::vector<unsigned> nodes(m);
 
             for (unsigned i = 0; i < m; ++i) {
@@ -1715,6 +1719,7 @@ class MergeHierarchicalNSW : public HierarchicalNSW<dist_t> {
         }
         else if (merge_order_selection == "graph")
         {
+            std::cout << "Graph merge order selected." << std::endl;
             if (merge_order_file == "None")
             {
                 std::cerr << "Error: graph order file does not exist." << std::endl;
@@ -1732,6 +1737,115 @@ class MergeHierarchicalNSW : public HierarchicalNSW<dist_t> {
                 }
             }
         }
+        else if (merge_order_selection == "pertersen")
+        {
+            std::cout << "Petersen merge order selected." << std::endl;
+            if (m != 10)
+            {
+                std::cerr << "Error: pertersen merge order only supports 10 graphs." << std::endl;
+                exit(1);
+            }
+            std::vector<unsigned> nodes(m);
+
+            for (unsigned i = 0; i < m; ++i) {
+                nodes[i] = i;
+            }
+
+            unsigned seed = 42;  // 固定种子值
+            std::mt19937 g(seed); // 使用固定种子初始化生成器
+            std::shuffle(nodes.begin(), nodes.end(), g);
+
+            // Petersen图的边（基于标准编号0-9）
+            // 外圈5个顶点：0,1,2,3,4 形成五边形
+            // 内圈5个顶点：5,6,7,8,9 形成五角星
+            std::vector<std::pair<unsigned, unsigned>> petersen_edges = {
+                // 外圈五边形的边
+                {0, 1}, {1, 2}, {2, 3}, {3, 4}, {4, 0}, {0,2}, {1,3}, {2,4}, {3,0}, {4,1}, {0, 6}, {1, 7}, {2, 8}, {3, 9}, {4, 5},
+                // 内圈五角星的边
+                {5, 7}, {7, 9}, {9, 6}, {6, 8}, {8, 5}, {5,6}, {6,7}, {7,8}, {8,9}, {9,5}, {5, 1}, {6, 2}, {7, 3}, {8, 4}, {9, 0},
+                // 外圈到内圈的连接（每个外圈顶点连接到对应的内圈顶点）
+                {0, 5}, {1, 6}, {2, 7}, {3, 8}, {4, 9}
+            };
+            // std::vector<std::pair<unsigned, unsigned>> petersen_edges = {
+            //     // 外圈五边形的边
+            //     {0, 1}, {1, 2}, {2, 3}, {3, 4}, {4, 0},
+            //     // 内圈五角星的边
+            //     {5, 7}, {7, 9}, {9, 6}, {6, 8}, {8, 5},
+            //     // 外圈到内圈的连接（每个外圈顶点连接到对应的内圈顶点）
+            //     {0, 5}, {1, 6}, {2, 7}, {3, 8}, {4, 9}
+            // };
+
+            // 将边映射到随机打乱后的节点编号
+            for (const auto& edge : petersen_edges) {
+                unsigned u = nodes[edge.first];
+                unsigned v = nodes[edge.second];
+                merge_order.push_back({std::min(u, v), std::max(u, v)});
+            }
+        }
+        else if (merge_order_selection == "hoffman-singleton")
+        {
+            std::cout << "Hoffman-Singleton merge order selected." << std::endl;
+            if (m != 50)
+            {
+                std::cerr << "Error: hoffman-singleton merge order only supports 50 graphs." << std::endl;
+                exit(1);
+            }
+            std::vector<unsigned> nodes(m);
+
+            for (unsigned i = 0; i < m; ++i) {
+                nodes[i] = i;
+            }
+
+            unsigned seed = 42;  // 固定种子值
+            std::mt19937 g(seed); // 使用固定种子初始化生成器
+            std::shuffle(nodes.begin(), nodes.end(), g);
+
+            // Hoffman-Singleton图的构造
+            // 使用五边形-五角星构造法：
+            // 顶点0-24: 5个五边形（每个5个顶点）
+            // 顶点25-49: 5个五角星（每个5个顶点）
+
+            std::vector<std::pair<unsigned, unsigned>> hs_edges;
+
+            // 1. 每个五边形内部的边（5个五边形）
+            for (unsigned p = 0; p < 5; ++p) {
+                for (unsigned i = 0; i < 5; ++i) {
+                    unsigned v1 = p * 5 + i;
+                    unsigned v2 = p * 5 + ((i + 1) % 5);
+                    hs_edges.push_back({v1, v2});
+                }
+            }
+
+            // 2. 每个五角星内部的边（5个五角星）
+            for (unsigned s = 0; s < 5; ++s) {
+                for (unsigned i = 0; i < 5; ++i) {
+                    unsigned v1 = 25 + s * 5 + i;
+                    unsigned v2 = 25 + s * 5 + ((i + 2) % 5);  // 五角星：每个顶点连接到间隔一个的顶点
+                    hs_edges.push_back({v1, v2});
+                }
+            }
+
+            // 3. 五边形和五角星之间的连接
+            // 五边形p的顶点i连接到五角星s的顶点j，其中j = (i + p*h) mod 5
+            // h是连接参数，对于Hoffman-Singleton图，使用特定的连接规则
+            for (unsigned p = 0; p < 5; ++p) {
+                for (unsigned i = 0; i < 5; ++i) {
+                    for (unsigned s = 0; s < 5; ++s) {
+                        unsigned j = (i + p * s) % 5;
+                        unsigned pentagon_vertex = p * 5 + i;
+                        unsigned pentagram_vertex = 25 + s * 5 + j;
+                        hs_edges.push_back({pentagon_vertex, pentagram_vertex});
+                    }
+                }
+            }
+
+            // 将边映射到随机打乱后的节点编号
+            for (const auto& edge : hs_edges) {
+                unsigned u = nodes[edge.first];
+                unsigned v = nodes[edge.second];
+                merge_order.push_back({std::min(u, v), std::max(u, v)});
+            }
+        }
         else
         {
             std::cerr << "Error: unknown merge_order_selection " << merge_order_selection << std::endl;
@@ -1743,14 +1857,14 @@ class MergeHierarchicalNSW : public HierarchicalNSW<dist_t> {
         {
             for (auto&& p : merge_order) { // pairwise merge
                 NGM_merge_into_later(graphs, p.first, p.second, ef_construction_, parameters); // first merge into second
-                NGM_merge_into_later(graphs, p.second, p.first, ef_construction_, parameters); // second merge into first
+                //NGM_merge_into_later(graphs, p.second, p.first, ef_construction_, parameters); // second merge into first
             }
         }
         else if (method == "RGTM")
         {
             for (auto&& p : merge_order) { // pairwise merge
                 RGTM_merge_into_later(graphs, p.first, p.second, parameters); // first merge into second
-                RGTM_merge_into_later(graphs, p.second, p.first, parameters); // second merge into first
+                //RGTM_merge_into_later(graphs, p.second, p.first, parameters); // second merge into first
             }
         }
         else
@@ -2110,7 +2224,7 @@ class MergeHierarchicalNSW : public HierarchicalNSW<dist_t> {
             while (!temp_candidates.empty()) {
                 auto candidate = temp_candidates.top();
                 temp_candidates.pop();
-                starting_ids.push_back(candidate.first);
+                starting_ids.push_back(candidate.second);
                 top_candidates.push({candidate.first, candidate.second + globalid_offset[G2_id]});
             }
             tableint merged_internal_id = global_search_id + globalid_offset[G1_id];
