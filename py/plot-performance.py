@@ -1,4 +1,6 @@
 import csv
+from os.path import exists
+
 import numpy as np
 import matplotlib.pyplot as plt
 import matplotlib.cm as cm
@@ -6,9 +8,10 @@ import glob
 import re
 import os
 
-datasets = ['deep1M']
+# datasets = ['anton10m', 'imagenet10m', 'deep10m', 'msmarc10m']
+datasets = ['deep100M']
 methods = ['random']
-merge_m = [5]
+merge_m = [50]
 et = 0
 
 if __name__=="__main__":
@@ -19,16 +22,19 @@ if __name__=="__main__":
         for method in methods:
             for m in merge_m:
                 if m == 2:
-                    base_path = f'/home/jlc/hnswlib/data/{db}/{method}/performance/bi'
+                    base_path = f'/mnt/ssd/merge_bench/{db}/{method}/performance/bi'
+                    output = f'/home/jlc/hnsw-merge/performance/bi'
                 if m > 2:
-                    base_path = f'/home/jlc/hnswlib/data/{db}/{method}/performance/{m}parts'
+                    base_path = f'/home/jlc/hnsw-merge/performance/{db}/{m}parts'
+                    output = f'/home/jlc/hnsw-merge/performance'
+
 
                 csv_files = glob.glob(f"{base_path}/*.csv")
 
                 line_names = []
                 for file in csv_files:
                     filename = os.path.basename(file)  # 获取文件名
-                    match = re.search(fr'deep1M_{method}_(.+)\.csv', filename)
+                    match = re.search(fr'{db}_{method}_(.+)\.csv', filename)
                     if match:
                         line_names.append(match.group(1))
 
@@ -68,8 +74,10 @@ if __name__=="__main__":
                 plt.legend()
 
                 # 可选：对y轴使用对数刻度，因为延迟可能有很大差异
-                plt.yscale('log', base=2)
+                # plt.yscale('log', base=2)
 
+                if not exists(output):
+                    os.makedirs(output)
                 plt.tight_layout()
-                plt.savefig(f"{base_path}/recall_vs_QPS_comparison.png", dpi=300)
+                plt.savefig(f"{base_path}/{db}_recall_vs_QPS_comparison.png", dpi=300)
                 plt.show()

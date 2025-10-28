@@ -1,57 +1,164 @@
 #!/bin/bash
+source params.sh
 
-# Define the executable and fixed input/output paths
-#EXECUTABLE="/home/jlc/hnswlib/cmake-build-debug/test_hnsw_search"
-#DATA_FILE="/home/jlc/hnswlib/data/deep1M/kmeans/bi-index-data/deep1M_kmeans_base.fvecs"
-#QUERY_FILE="/home/jlc/hnswlib/data/deep1M/deep1M_query.fvecs"
-#GT_FILE="/home/jlc/hnswlib/data/deep1M/kmeans/bi-index-data/deep1M_kmeans_groundtruth.ivecs"
-#OUTPUT_PATH="/home/jlc/hnswlib/data/deep1M/kmeans/performance/bi"
+for db in "${datasets[@]}"; do
+  if [ "$db" == "sift" ]; then
+      ef=40
+      M=25
+      sub_ef=200
+      sub_M=25
+      PARAMS=(
+          "40 5 3"
+          "40 10 3"
+          "40 20 3"
+          "40 30 3"
+        )
+    elif [ "$db" == "deep1M" ]; then
+      ef=40
+      M=30
+      sub_ef=200
+      sub_M=30
+      PARAMS=(
+              "40 5 3"
+              "40 10 3"
+              "40 20 3"
+              "40 30 3"
+            )
+    elif [ "$db" == "gist" ]; then
+      ef=200
+      M=30
+      sub_ef=200
+      sub_M=30
+    elif [ "$db" == "glove100d" ]; then
+      ef=200
+      M=30
+      sub_ef=200
+      sub_M=30
+    elif [ "$db" == "msong" ]; then
+      ef=30
+      M=40
+      sub_ef=200
+      sub_M=40
+      PARAMS=(
+              "30 5 3"
+              "30 10 3"
+              "30 15 3"
+              "30 20 3"
+            )
+    elif [ "$db" == "crawl" ]; then
+      ef=200
+      M=35
+      sub_ef=200
+      sub_M=35
+    elif [ "$db" == "msmarco1M" ]; then
+      ef=50
+      M=30
+      sub_ef=200
+      sub_M=30
+      PARAMS=(
+              "50 5 3"
+              "50 10 3"
+              "50 20 3"
+              "50 40 3"
+            )
+#    elif [ "$db" == "anton10m" ]; then
+#          ef=50
+#          M=30
+#          sub_ef=300
+#          sub_M=30
+#          PARAMS=(
+#                  "50 5 3"
+#                  "50 10 3"
+#                  "50 20 3"
+#                  "50 40 3"
+#                )
+  elif [ "$db" == "anton10m" ]; then
+        ef=40
+        M=30
+        sub_ef=300
+        sub_M=30
+        PARAMS=(
+                "40 20 3"
+                "40 30 3"
+              )
+    elif [ "$db" == "imagenet10m" ]; then
+          ef=50
+          M=30
+          sub_ef=300
+          sub_M=30
+          PARAMS=(
+                  "50 10 3"
+                  "50 20 3"
+                  "50 40 3"
+                )
+    elif [ "$db" == "deep10m" ]; then
+        ef=60
+        M=30
+        sub_ef=300
+        sub_M=30
+        PARAMS=(
+#                "60 10 3"
+#                "60 20 3"
+                "60 40 3"
+              )
+    elif [ "$db" == "msmarc10m" ]; then
+          ef=50
+          M=30
+          sub_ef=300
+          sub_M=30
+          PARAMS=(
+                  "50 10 3"
+                  "50 20 3"
+                  "50 30 3"
+                  "50 40 3"
+                )
+    elif [ "$db" == "deep100M" ]; then
+          ef=60
+          M=30
+          sub_ef=500
+          sub_M=30
+          PARAMS=(
+    #              "60 10 3"
+                  #"60 20 3"
+                  "60 40 3"
+                )
+    else
+      echo "Unknown dataset: $db"
+      exit 1
+    fi
+  for m in "${ms[@]}"; do
+    EXECUTABLE="/home/jlc/hnsw-merge/cmake-build-debug/test_hnsw_search"
+    DATA_FILE="/mnt/ssd/merge_bench/${db}/random/multi-index-data/${m}parts/${db}_random_base.fvecs"
+    QUERY_FILE="/mnt/ssd/merge_bench/${db}/${db}_query.fvecs"
+    GT_FILE="/mnt/ssd/merge_bench/${db}/random/multi-index-data/${m}parts/${db}_random_groundtruth.ivecs"
+    OUTPUT_PATH="/home/jlc/hnsw-merge/performance/${db}/${m}parts"
+    MERGED_NSG_PATH="/mnt/ssd/merge_bench/${db}/random/multi-index-merged/${m}parts/${db}_random_RGTM"
 
-EXECUTABLE="/home/jlc/hnswlib/cmake-build-debug/test_hnsw_search"
-DATA_FILE="/home/jlc/hnswlib/data/deep1M/kmeans/multi-index-data/5parts/deep1M_kmeans_base.fvecs"
-QUERY_FILE="/home/jlc/hnswlib/data/deep1M/deep1M_query.fvecs"
-GT_FILE="/home/jlc/hnswlib/data/deep1M/kmeans/multi-index-data/5parts/deep1M_kmeans_groundtruth.ivecs"
-OUTPUT_PATH="/home/jlc/hnswlib/data/deep1M/kmeans/performance/5parts"
+    # Fixed parameters for the search
+    K=10          # Number of nearest neighbors to retrieve
+    MIN_EF=10     # Minimum ef value
+    MAX_EF=150    # Maximum ef value
+    STEPSIZE=10   # Step size for increasing ef
+    morder="unweighted-graph"
 
-# Parameter combinations for ef80_G_L_S
-PARAMS=(
-  "80_10_3"
-  "80_20_3"
-  "80_30_3"
-  "80_40_3"
-  "80_10_5"
-  "80_20_5"
-  "80_30_5"
-  "80_40_5"
-  "80_20_10"
-  "80_30_10"
-  "80_40_3"
-  "40_20_3"
-  "40_20_5"
-  "40_20_10"
-  "20_10_3"
-  "20_10_5"
-  "20_5_3"
-)
+    # Loop through each parameter combination
+    for param in "${PARAMS[@]}"; do
+      # Parse the parameter string (G_L_S)
+      read -r G L S <<< "$param"
 
-# Fixed parameters for the search
-K=10          # Number of nearest neighbors to retrieve
-MIN_EF=10     # Minimum ef value
-MAX_EF=150    # Maximum ef value
-STEPSIZE=10   # Step size for increasing ef
+      # Construct the input HNSW graph file name and output CSV file name
+      GRAPH_INDEX_FILE="${MERGED_NSG_PATH}_${morder}_ef${G}_${L}_${S}_M${M}.hnsw"
+      PERFORMANCE_CSV="${OUTPUT_PATH}/${db}_random_RGTM_${morder}_ef${G}_${L}_${S}_M${M}_K${K}.csv"
 
-# Loop through each parameter combination
-for param in "${PARAMS[@]}"; do
-  # Parse the parameter string (G_L_S)
-  IFS="_" read -r G L S <<< "$param"
+      # Run the search command
+      # echo "Running: $EXECUTABLE $DATA_FILE $QUERY_FILE $GT_FILE $GRAPH_INDEX_FILE $K $MIN_EF $MAX_EF $STEPSIZE $PERFORMANCE_CSV"
+      $EXECUTABLE $DATA_FILE $QUERY_FILE $GT_FILE $GRAPH_INDEX_FILE $K $MIN_EF $MAX_EF $STEPSIZE $PERFORMANCE_CSV
+    done
 
-  # Construct the input HNSW graph file name and output CSV file name
-  GRAPH_INDEX_FILE="/home/jlc/hnswlib/data/deep1M/kmeans/multi-index-merged/5parts/deep1M_kmeans_RGTM_et0_ef${G}_${L}_${S}_M32.hnsw"
-  PERFORMANCE_CSV="${OUTPUT_PATH}/deep1M_kmeans_RGTM_et0_ef${G}_${L}_${S}_M32.csv"
-
-  # Run the search command
-  echo "Running: $EXECUTABLE $DATA_FILE $QUERY_FILE $GT_FILE $GRAPH_INDEX_FILE $K $MIN_EF $MAX_EF $STEPSIZE $PERFORMANCE_CSV"
-  $EXECUTABLE $DATA_FILE $QUERY_FILE $GT_FILE $GRAPH_INDEX_FILE $K $MIN_EF $MAX_EF $STEPSIZE $PERFORMANCE_CSV
+    NGM_GRAPH_INDEX_FILE="/mnt/ssd/merge_bench/${db}/random/multi-index-merged/${m}parts/${db}_random_NGM_pairwise_ef${ef}_M${M}.hnsw"
+    NGM_PERFORMANCE_CSV="${OUTPUT_PATH}/${db}_random_NGM_pairwise_ef${ef}_M${M}_K${K}.csv"
+    $EXECUTABLE $DATA_FILE $QUERY_FILE $GT_FILE $NGM_GRAPH_INDEX_FILE $K $MIN_EF $MAX_EF $STEPSIZE $NGM_PERFORMANCE_CSV
+  done
 done
 
 echo "All tests completed."

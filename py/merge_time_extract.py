@@ -6,9 +6,10 @@ import glob
 import re
 import os
 
-datasets = ['deep1M']
+datasets = ['msmarc10m']
+# datasets = ['anton10m', 'imagenet10m', 'deep10m', 'msmarc10m']
 methods = ['random']
-merge_m = [5]
+merge_m = [4]
 et = 0
 
 if __name__=="__main__":
@@ -17,9 +18,11 @@ if __name__=="__main__":
         for method in methods:
             for m in merge_m:
                 if m == 2:
-                    base_path = f'/home/jlc/hnswlib/data/{db}/{method}/performance/bi'
+                    base_path = f'/home/jlc/hnsw-merge/performance/{db}'
+                    output = f'/home/jlc/hnsw-merge/performance/bi'
                 if m > 2:
-                    base_path = f'/home/jlc/hnswlib/data/{db}/{method}/performance/{m}parts'
+                    base_path = f'/home/jlc/hnsw-merge/performance/{db}/{m}parts'
+                    output = f'/home/jlc/hnsw-merge/performance'
 
                 log_file = f'{base_path}/RGTM_merge.log'
 
@@ -36,7 +39,7 @@ if __name__=="__main__":
                             merge_time = float(merge_time_match.group(1)) if merge_time_match else None
 
                             # 提取deep1M_random_X.hnsw中的X部分
-                            hnsw_pattern = fr"deep1M_{method}_(.+)\.hnsw"
+                            hnsw_pattern = fr"{db}_{method}_(.+)\.hnsw"
                             hnsw_match = re.search(hnsw_pattern, line)
                             x_part = hnsw_match.group(1) if hnsw_match else None
 
@@ -47,10 +50,11 @@ if __name__=="__main__":
                 plt.bar(names, merge_times)
                 plt.xlabel('Configuration')
                 plt.ylabel('Merge Time (s)')
+                # plt.yscale('log',base=10)
                 plt.title('Merge Time Comparison')
                 plt.xticks(rotation=45, ha='right')  # 旋转x轴标签，避免重叠
                 plt.tight_layout()
-                plt.savefig(f'{base_path}/merge_time_comparison.png')
+                plt.savefig(f'{base_path}/{db}_merge_time_comparison.png')
 
 
 

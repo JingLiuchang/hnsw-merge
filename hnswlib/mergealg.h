@@ -17,6 +17,95 @@
 #include "parameter.h"
 #include <algorithm>
 #include "utils.h"
+#include <set>
+
+#define S 4.0
+
+void add_circulant_edges_k2(unsigned n,
+                            unsigned t_max,            // 加入 1..t_max
+                            std::vector<std::pair<unsigned, unsigned>>& merge_order)
+{
+    for (unsigned t = 1; t <= t_max; t++) {
+        for (unsigned i = 0; i < n; i++) {
+            unsigned j = (i + t) % n;
+            merge_order.emplace_back(i, j);
+        }
+    }
+
+    if (n%2 == 0)
+    {
+        unsigned t = n/2;
+        for (unsigned i = 0; i < n/2; i++) {
+            unsigned j = (i + t) % n;
+            merge_order.emplace_back(i, j);
+        }
+    }
+    else
+    {
+        unsigned t1 = (n-1) / 2;
+        unsigned t2 = t1 + 1;
+        for (unsigned i = 0; i < t1; i++)
+        {
+            unsigned j1 = (i + t1) % n;
+            unsigned j2 = (i + t2) % n;
+            merge_order.emplace_back(i, j1);
+            merge_order.emplace_back(i, j2);
+        }
+        unsigned last_i = t1;
+        unsigned last_j = (last_i + t1) % n;
+        merge_order.emplace_back(last_i, last_j);
+    }
+
+    std::set<std::pair<unsigned, unsigned>> unique_pairs;
+
+    auto it = merge_order.begin();
+    while (it != merge_order.end()) {
+        unsigned i = it->first;
+        unsigned j = it->second;
+
+        // Check if i == j (self-loop) or if i or j are out of bounds
+        if (i == j || i >= n || j >= n) {
+            it = merge_order.erase(it); // Remove invalid pairs
+            std::cerr << 'invalid pair removed: (' << i << ", " << j << ")\n";
+            continue;
+        }
+
+        // Normalize the pair into (min(i, j), max(i, j))
+        std::pair<unsigned, unsigned> normalized_pair = {std::min(i, j), std::max(i, j)};
+
+        // Check if the normalized pair already exists
+        if (unique_pairs.count(normalized_pair)) {
+            it = merge_order.erase(it); // Remove duplicate (i, j) or (j, i)
+        } else {
+            unique_pairs.insert(normalized_pair); // Insert the pair into the set
+            ++it;
+        }
+    }
+}
+
+void unweighted_graph_order(unsigned m, std::vector<std::pair<unsigned, unsigned>>& merge_order)
+{
+    unsigned tc = 0;
+    if (m%2 == 0)
+    {
+        tc = (m - 4 + 3) / 4;
+    }
+    else
+    {
+        tc = (m - 5 + 3) / 4;
+    }
+
+    unsigned tm = std::ceil((S * std::ceil(std::sqrt(m))));
+
+    unsigned t = std::max(tc, tm) / 2;
+    add_circulant_edges_k2(m, t, merge_order);
+}
+
+void weighted_graph_order(unsigned m, std::vector<std::pair<unsigned, unsigned>>& merge_order)
+{
+
+}
+
 
 namespace hnswlib {
 typedef unsigned int tableint;
@@ -1699,6 +1788,34 @@ class MergeHierarchicalNSW : public HierarchicalNSW<dist_t> {
             for (unsigned i = 0; i < m; ++i) {
                 merge_order.emplace_back(nodes[i], nodes[(i + 1) % m]);
             }
+
+            merge_order.emplace_back(0,2);
+
+            if (m == 6)
+            {
+                merge_order.emplace_back(0,2);
+                merge_order.emplace_back(0,4);
+                merge_order.emplace_back(1,3);
+                merge_order.emplace_back(1,5);
+                merge_order.emplace_back(2,4);
+                merge_order.emplace_back(3,5);
+            }
+
+            if (m == 8)
+            {
+                merge_order.emplace_back(0,2);
+                merge_order.emplace_back(1,3);
+                merge_order.emplace_back(2,4);
+                merge_order.emplace_back(3,5);
+                merge_order.emplace_back(4,6);
+                merge_order.emplace_back(5,7);
+                merge_order.emplace_back(6,0);
+                merge_order.emplace_back(7,1);
+                merge_order.emplace_back(0,4);
+                merge_order.emplace_back(1,5);
+                merge_order.emplace_back(2,6);
+                merge_order.emplace_back(3,7);
+            }
         }
         else if (merge_order_selection == std::string("path"))
         {
@@ -1717,7 +1834,7 @@ class MergeHierarchicalNSW : public HierarchicalNSW<dist_t> {
                 merge_order.emplace_back(nodes[i], nodes[(i + 1) % m]);
             }
         }
-        else if (merge_order_selection == "graph")
+        else if (merge_order_selection == "weighted-graph")
         {
             std::cout << "Graph merge order selected." << std::endl;
             if (merge_order_file == "None")
@@ -1736,6 +1853,12 @@ class MergeHierarchicalNSW : public HierarchicalNSW<dist_t> {
                     }
                 }
             }
+        }
+        else if (merge_order_selection == "unweighted-graph")
+        {
+            std::cout << "unweighted-graph merge order selected." << std::endl;
+
+            unweighted_graph_order(m, merge_order);
         }
         else if (merge_order_selection == "pertersen")
         {
@@ -1759,21 +1882,10 @@ class MergeHierarchicalNSW : public HierarchicalNSW<dist_t> {
             // 外圈5个顶点：0,1,2,3,4 形成五边形
             // 内圈5个顶点：5,6,7,8,9 形成五角星
             std::vector<std::pair<unsigned, unsigned>> petersen_edges = {
-                // 外圈五边形的边
                 {0, 1}, {1, 2}, {2, 3}, {3, 4}, {4, 0}, {0,2}, {1,3}, {2,4}, {3,0}, {4,1}, {0, 6}, {1, 7}, {2, 8}, {3, 9}, {4, 5},
-                // 内圈五角星的边
                 {5, 7}, {7, 9}, {9, 6}, {6, 8}, {8, 5}, {5,6}, {6,7}, {7,8}, {8,9}, {9,5}, {5, 1}, {6, 2}, {7, 3}, {8, 4}, {9, 0},
-                // 外圈到内圈的连接（每个外圈顶点连接到对应的内圈顶点）
                 {0, 5}, {1, 6}, {2, 7}, {3, 8}, {4, 9}
             };
-            // std::vector<std::pair<unsigned, unsigned>> petersen_edges = {
-            //     // 外圈五边形的边
-            //     {0, 1}, {1, 2}, {2, 3}, {3, 4}, {4, 0},
-            //     // 内圈五角星的边
-            //     {5, 7}, {7, 9}, {9, 6}, {6, 8}, {8, 5},
-            //     // 外圈到内圈的连接（每个外圈顶点连接到对应的内圈顶点）
-            //     {0, 5}, {1, 6}, {2, 7}, {3, 8}, {4, 9}
-            // };
 
             // 将边映射到随机打乱后的节点编号
             for (const auto& edge : petersen_edges) {

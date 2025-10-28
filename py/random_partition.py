@@ -17,16 +17,16 @@ if __name__ == "__main__":
         print('Error: num_clusters must be at least 2.')
         exit(1)
     elif num_clusters == 2:
-        data_path = f'/home/jlc/hnswlib/data/{db}/{db}_base.fvecs'
-        random_centroids_save_path = f'/home/jlc/hnswlib/data/{db}/random/bi-index-data/{db}_random_centroids.fvecs'
-        partition_save_path = f'/home/jlc/hnswlib/data/{db}/random/bi-index-data/'
-        base_save_path = f'/home/jlc/hnswlib/data/{db}/random/bi-index-data/{db}_random_base.fvecs'
+        data_path = f'/mnt/ssd/merge_bench/{db}/{db}_base.fvecs'
+        random_centroids_save_path = f'/mnt/ssd/merge_bench/{db}/random/bi-index-data/{db}_random_centroids.fvecs'
+        partition_save_path = f'/mnt/ssd/merge_bench/{db}/random/bi-index-data/'
+        base_save_path = f'/mnt/ssd/merge_bench/{db}/random/bi-index-data/{db}_random_base.fvecs'
     else:
-        data_path = f'/home/jlc/hnswlib/data/{db}/{db}_base.fvecs'
-        random_centroids_save_path = f'/home/jlc/hnswlib/data/{db}/random/multi-index-data/{db}_random_centroids.fvecs'
-        partition_save_path = f'/home/jlc/hnswlib/data/{db}/random/multi-index-data/{num_clusters}parts/'
-        partition_index_path = f'/home/jlc/hnswlib/data/{db}/random/multi-index-merged/{num_clusters}parts/'
-        base_save_path = f'/home/jlc/hnswlib/data/{db}/random/multi-index-data/{num_clusters}parts/{db}_random_base.fvecs'
+        data_path = f'/mnt/ssd/merge_bench/{db}/{db}_base.fvecs'
+        random_centroids_save_path = f'/mnt/ssd/merge_bench/{db}/random/multi-index-data/{db}_random_centroids.fvecs'
+        partition_save_path = f'/mnt/ssd/merge_bench/{db}/random/multi-index-data/{num_clusters}parts/'
+        partition_index_path = f'/mnt/ssd/merge_bench/{db}/random/multi-index-merged/{num_clusters}parts/'
+        base_save_path = f'/mnt/ssd/merge_bench/{db}/random/multi-index-data/{num_clusters}parts/{db}_random_base.fvecs'
         os.makedirs(os.path.dirname(partition_save_path), exist_ok=True)
         os.makedirs(os.path.dirname(partition_index_path), exist_ok=True)
 

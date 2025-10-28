@@ -113,7 +113,7 @@ int main(int argc, char** argv) {
         graphs[i] = hnsw;
     }
 
-    int num_threads = 72;       // Number of threads for operations with index
+    int num_threads = 118;        // Number of threads for operations with index
     omp_set_num_threads(num_threads);
 
     auto s = std::chrono::high_resolution_clock::now();

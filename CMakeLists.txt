@@ -118,11 +118,6 @@ if(HNSWLIB_EXAMPLES)
     add_executable(test_hnsw_search examples/cpp/test_hnsw_search.cpp)
     target_link_libraries(test_hnsw_search hnswlib ${TBB_LIBRARIES})
 
-    add_executable(draft examples/cpp/draft.cpp)
-    target_link_libraries(draft hnswlib ${TBB_LIBRARIES})
-
-    add_executable(fxy examples/cpp/fxy.cpp)
-    target_link_libraries(fxy hnswlib ${TBB_LIBRARIES})
 
     # tests
     add_executable(multivector_search_test tests/cpp/multivector_search_test.cpp)
