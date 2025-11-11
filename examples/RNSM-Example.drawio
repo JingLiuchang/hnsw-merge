@@ -284,7 +284,7 @@
         <mxCell id="IqfQO-gNmHYO6OL68qd3-82" value="" style="shape=tableRow;horizontal=0;startSize=0;swimlaneHead=0;swimlaneBody=0;strokeColor=inherit;top=0;left=0;bottom=0;right=0;collapsible=0;dropTarget=0;fillColor=none;points=[[0,0.5],[1,0.5]];portConstraint=eastwest;fontSize=16;" vertex="1" parent="IqfQO-gNmHYO6OL68qd3-81">
           <mxGeometry width="80" height="30" as="geometry" />
         </mxCell>
-        <mxCell id="IqfQO-gNmHYO6OL68qd3-83" value="&lt;span style=&quot;font-size: 9px; text-wrap-mode: nowrap;&quot;&gt;$$\text{A}k\text{NNs}$$&lt;/span&gt;" style="shape=partialRectangle;html=1;whiteSpace=wrap;connectable=0;strokeColor=inherit;overflow=hidden;fillColor=none;top=0;left=0;bottom=0;right=0;pointerEvents=1;fontSize=16;rowspan=1;colspan=4;" vertex="1" parent="IqfQO-gNmHYO6OL68qd3-82">
+        <mxCell id="IqfQO-gNmHYO6OL68qd3-83" value="&lt;span style=&quot;font-size: 9px; text-wrap-mode: nowrap;&quot;&gt;$$\text{ANNs}$$&lt;/span&gt;" style="shape=partialRectangle;html=1;whiteSpace=wrap;connectable=0;strokeColor=inherit;overflow=hidden;fillColor=none;top=0;left=0;bottom=0;right=0;pointerEvents=1;fontSize=16;rowspan=1;colspan=4;" vertex="1" parent="IqfQO-gNmHYO6OL68qd3-82">
           <mxGeometry width="80" height="30" as="geometry">
             <mxRectangle width="22" height="30" as="alternateBounds" />
           </mxGeometry>
@@ -684,7 +684,7 @@
             <mxPoint x="254" y="182" as="targetPoint" />
           </mxGeometry>
         </mxCell>
-        <mxCell id="IqfQO-gNmHYO6OL68qd3-292" value="$$\text{(a) A}k\text{NN Search On Source Index}$$" style="text;html=1;whiteSpace=wrap;strokeColor=none;fillColor=none;align=center;verticalAlign=middle;rounded=0;" vertex="1" parent="1">
+        <mxCell id="IqfQO-gNmHYO6OL68qd3-292" value="$$\text{AKNN Search On Source Index}$$" style="text;html=1;whiteSpace=wrap;strokeColor=none;fillColor=none;align=center;verticalAlign=middle;rounded=0;" vertex="1" parent="1">
           <mxGeometry x="290" y="310" width="220" height="30" as="geometry" />
         </mxCell>
         <mxCell id="IqfQO-gNmHYO6OL68qd3-297" value="$$\text{Source Index}$$" style="text;html=1;whiteSpace=wrap;strokeColor=none;fillColor=none;align=center;verticalAlign=middle;rounded=0;fontSize=20;fontStyle=1" vertex="1" parent="1">
