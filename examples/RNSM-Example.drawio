@@ -274,6 +274,12 @@
         <mxCell id="_idylszpJYgaQfu3o9JF-83" value="&lt;span style=&quot;text-wrap-mode: nowrap; font-size: 16px;&quot;&gt;Approximate} $$k$$-NNs&lt;/span&gt;" style="text;html=1;whiteSpace=wrap;strokeColor=none;fillColor=none;align=center;verticalAlign=middle;rounded=0;" vertex="1" parent="1">
           <mxGeometry x="100" y="700" width="60" height="30" as="geometry" />
         </mxCell>
+        <mxCell id="_idylszpJYgaQfu3o9JF-84" value="&lt;span style=&quot;text-wrap-mode: nowrap;&quot;&gt;$$\text{Global Merge}\enspace x$$&lt;/span&gt;" style="text;html=1;whiteSpace=wrap;strokeColor=none;fillColor=none;align=center;verticalAlign=middle;rounded=0;" vertex="1" parent="1">
+          <mxGeometry x="100" y="600" width="60" height="30" as="geometry" />
+        </mxCell>
+        <mxCell id="_idylszpJYgaQfu3o9JF-85" value="$$\text{Approximate}k\text{-NN&lt;span style=&quot;background-color: transparent; color: light-dark(rgb(0, 0, 0), rgb(255, 255, 255));&quot;&gt;}$$&lt;/span&gt;" style="text;html=1;whiteSpace=wrap;strokeColor=none;fillColor=none;align=center;verticalAlign=middle;rounded=0;" vertex="1" parent="1">
+          <mxGeometry x="190" y="720" width="230" height="30" as="geometry" />
+        </mxCell>
       </root>
     </mxGraphModel>
   </diagram>
