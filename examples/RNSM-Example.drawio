@@ -1327,13 +1327,13 @@
         <mxCell id="upscRtM7hUrTyUvvA2iU-127" parent="1" style="rounded=1;whiteSpace=wrap;html=1;absoluteArcSize=1;arcSize=14;strokeWidth=1;fillColor=default;strokeColor=#36393d;" value="" vertex="1">
           <mxGeometry height="144.99" width="386.76" x="353.24" y="35.01" as="geometry" />
         </mxCell>
-        <mxCell id="upscRtM7hUrTyUvvA2iU-128" parent="1" style="text;html=1;whiteSpace=wrap;strokeColor=none;fillColor=none;align=center;verticalAlign=middle;rounded=0;fontFamily=Times New Roman;fontSize=16;fontStyle=1" value="&lt;span style=&quot;color: rgb(51, 51, 51); text-align: start; background-color: rgb(255, 255, 255); font-weight: normal;&quot;&gt;Efficient Index Construction with Memory Construction&lt;/span&gt;" vertex="1">
+        <mxCell id="upscRtM7hUrTyUvvA2iU-128" parent="1" style="text;html=1;whiteSpace=wrap;strokeColor=none;fillColor=none;align=center;verticalAlign=middle;rounded=0;fontFamily=Times New Roman;fontSize=16;fontStyle=1" value="&lt;span style=&quot;color: rgb(51, 51, 51); text-align: start; background-color: rgb(255, 255, 255); font-weight: normal;&quot;&gt;Efficient Index Construction with Memory Constraint&lt;/span&gt;" vertex="1">
           <mxGeometry height="30" width="400" x="346.62" y="152.01" as="geometry" />
         </mxCell>
         <mxCell id="upscRtM7hUrTyUvvA2iU-129" parent="1" style="rounded=1;whiteSpace=wrap;html=1;absoluteArcSize=1;arcSize=14;strokeWidth=1;fillColor=default;strokeColor=#36393d;" value="" vertex="1">
           <mxGeometry height="170" width="386.76" x="353.24" y="190" as="geometry" />
         </mxCell>
-        <mxCell id="upscRtM7hUrTyUvvA2iU-130" parent="1" style="text;html=1;whiteSpace=wrap;strokeColor=none;fillColor=none;align=center;verticalAlign=middle;rounded=0;fontFamily=Times New Roman;fontSize=16;fontStyle=1" value="&lt;span style=&quot;color: rgb(51, 51, 51); text-align: start; background-color: rgb(255, 255, 255); font-weight: normal;&quot;&gt;Index Merge for Efficient Searching&lt;/span&gt;" vertex="1">
+        <mxCell id="upscRtM7hUrTyUvvA2iU-130" parent="1" style="text;html=1;whiteSpace=wrap;strokeColor=none;fillColor=none;align=center;verticalAlign=middle;rounded=0;fontFamily=Times New Roman;fontSize=16;fontStyle=1" value="&lt;span style=&quot;color: rgb(51, 51, 51); text-align: start; background-color: rgb(255, 255, 255); font-weight: normal;&quot;&gt;&lt;font face=&quot;Times New Roman&quot;&gt;Index Merge for Efficient Searching&lt;/font&gt;&lt;/span&gt;" vertex="1">
           <mxGeometry height="30" width="400" x="346.62" y="332.01" as="geometry" />
         </mxCell>
         <mxCell id="upscRtM7hUrTyUvvA2iU-137" parent="1" style="text;html=1;whiteSpace=wrap;strokeColor=none;fillColor=none;align=center;verticalAlign=middle;rounded=0;" value="&lt;font face=&quot;Times New Roman&quot; style=&quot;font-size: 16px;&quot;&gt;Random partition&lt;/font&gt;" vertex="1">
