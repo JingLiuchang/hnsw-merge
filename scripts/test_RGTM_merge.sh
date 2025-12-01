@@ -92,14 +92,14 @@ for db in "${datasets[@]}"; do
                 "50 40 3"
               )
   elif [ "$db" == "deep10m" ]; then
-      ef=60
+      ef=50
       M=30
       sub_ef=300
       sub_M=30
       PARAMS=(
-#              "60 10 3"
-#              "60 20 3"
-              "60 40 3"
+#              "50 10 3"
+#              "50 20 3"
+              "50 40 3"
             )
   elif [ "$db" == "msmarc10m" ]; then
       ef=50
@@ -119,8 +119,8 @@ for db in "${datasets[@]}"; do
       sub_M=30
       PARAMS=(
 #              "60 10 3"
-              #"60 20 3"
-              "60 40 3"
+              "60 20 3"
+              #"60 40 3"
             )
   else
     echo "Unknown dataset: $db"
@@ -128,16 +128,16 @@ for db in "${datasets[@]}"; do
   fi
 
   for m in "${ms[@]}"; do
-    EXECUTABLE="/home/jlc/hnsw-merge/cmake-build-debug/test_RGTM_merge"
-    DATA_FILE="/mnt/ssd/merge_bench/${db}/random/multi-index-data/${m}parts/${db}_random_base.fvecs"
-    GRAPH_INDEX_FILE="/mnt/ssd/merge_bench/${db}/random/multi-index-merged/${m}parts/${db}_randomP"
-    MERGED_NSG_PATH="/mnt/ssd/merge_bench/${db}/random/multi-index-merged/${m}parts/${db}_random_RGTM"
+    EXECUTABLE="${REPO_PATH}/cmake-build-debug/test_RGTM_merge"
+    DATA_FILE="${DATA_PATH}/${db}/random/multi-index-data/${m}parts/${db}_random_base.fvecs"
+    GRAPH_INDEX_FILE="${DATA_PATH}/${db}/random/multi-index-merged/${m}parts/${db}_randomP"
+    MERGED_NSG_PATH="${DATA_PATH}/${db}/random/multi-index-merged/${m}parts/${db}_random_RGTM"
 
     ET=0
     RATIO=1.0
 
     # Log file to store outputs
-    LOG_FILE="/home/jlc/hnsw-merge/performance/${db}/${m}parts/RGTM_merge.log"
+    LOG_FILE="${REPO_PATH}/performance/${db}/${m}parts/RGTM_merge.log"
 
     morder="unweighted-graph"
 
@@ -150,13 +150,13 @@ for db in "${datasets[@]}"; do
 
       OUTPUT_FILE="${MERGED_NSG_PATH}_${morder}_ef${G}_${L}_${S}_M${M}.hnsw"
 
-      #echo "$EXECUTABLE $DATA_FILE $G $L $S ${M} ${sub_ef} ${sub_M} 2 $GRAPH_INDEX_FILE $OUTPUT_FILE $ET $RATIO $morder"
+      echo "$EXECUTABLE $DATA_FILE $G $L $S ${M} ${sub_ef} ${sub_M} $m $GRAPH_INDEX_FILE $OUTPUT_FILE $ET $RATIO $morder"
       $EXECUTABLE $DATA_FILE $G $L $S ${M} ${sub_ef} ${sub_M} $m $GRAPH_INDEX_FILE $OUTPUT_FILE $ET $RATIO $morder 2>&1 | tee -a "$LOG_FILE"
     done
 
-    NGM_MORDER="pairwise"
-    NGM_EXECUTABLE="/home/jlc/hnsw-merge/cmake-build-debug/test_NGM_merge"
-    NGM_MERGED_NSG_PATH="/mnt/ssd/merge_bench/${db}/random/multi-index-merged/${m}parts/${db}_random_NGM"
+    NGM_MORDER="path"
+    NGM_EXECUTABLE="${REPO_PATH}/cmake-build-debug/test_NGM_merge"
+    NGM_MERGED_NSG_PATH="${DATA_PATH}/${db}/random/multi-index-merged/${m}parts/${db}_random_NGM"
     NGM_OUTPUT_FILE="${NGM_MERGED_NSG_PATH}_${NGM_MORDER}_ef${ef}_M${M}.hnsw"
 
     $NGM_EXECUTABLE $DATA_FILE $ef ${M} ${sub_ef} ${sub_M} $m $GRAPH_INDEX_FILE $NGM_OUTPUT_FILE $ET $RATIO $NGM_MORDER 2>&1 | tee -a "$LOG_FILE"

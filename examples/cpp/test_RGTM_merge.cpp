@@ -75,7 +75,7 @@ int main(int argc, char** argv) {
 
     float* data = NULL;
     size_t max_elements, dim;
-    load_data(argv[1], data, max_elements, dim);
+    // load_data(argv[1], data, max_elements, dim);
     int ef_construction = atoi(argv[2]);
     int local_ef = atoi(argv[3]);
     int self_ef = atoi(argv[4]);

@@ -154,21 +154,8 @@ def write_ibin_nocp(filename, vecs):
 
 
 def write_u8bin(filename: str, vecs: np.ndarray, ) -> None:
-    """
-    将uint8矩阵保存为SIFT1B BIGANN的bvecs格式。
-
-    Args:
-        matrix (np.ndarray): 要保存的uint8矩阵。
-            可以是numpy数组或嵌套列表。
-        filename (str): 输出文件的名称。
-
-    Raises:
-        ValueError: 如果输入矩阵不是2维或者数据类型不是uint8。
-    """
-
-    # 检查矩阵是否为2维uint8类型
     if vecs.ndim != 2 or vecs.dtype != np.uint8:
-        raise ValueError("输入矩阵必须是2维uint8类型")
+        raise ValueError("invalid matrix: must be 2-dimensional and of type uint8")
 
     with open(filename, "wb") as f:
         nvecs, dim = vecs.shape
@@ -180,21 +167,8 @@ def write_u8bin(filename: str, vecs: np.ndarray, ) -> None:
         vecs.astype('uint8').flatten().tofile(f)
 
 def write_u8bin_nocp(filename: str, vecs: np.ndarray, ) -> None:
-    """
-    将uint8矩阵保存为SIFT1B BIGANN的bvecs格式。
-
-    Args:
-        matrix (np.ndarray): 要保存的uint8矩阵。
-            可以是numpy数组或嵌套列表。
-        filename (str): 输出文件的名称。
-
-    Raises:
-        ValueError: 如果输入矩阵不是2维或者数据类型不是uint8。
-    """
-
-    # 检查矩阵是否为2维uint8类型
     if vecs.ndim != 2 or vecs.dtype != np.uint8:
-        raise ValueError("输入矩阵必须是2维uint8类型")
+        raise ValueError("invalid input matrix")
 
     with open(filename, "wb") as f:
         nvecs, dim = vecs.shape
@@ -223,11 +197,11 @@ def bvecs_write(fname, m):
 
 
 if __name__ == "__main__":
-    dbs = ["sift", "deep1M", "glove100d", "crawl", "msong", "gist", "msmarco1M"]
-    for db in dbs:
-        data = fvecs_read(f'/mnt/ssd/merge_bench/{db}/{db}_base.fvecs')
-        query = fvecs_read(f'/mnt/ssd/merge_bench/{db}/{db}_query.fvecs')
-        print(f'{db} : {data.shape}; query : {query.shape}')
+    # dbs = ["sift", "deep1M", "glove100d", "crawl", "msong", "gist", "msmarco1M"]
+    # for db in dbs:
+    #     data = fvecs_read(f'/mnt/ssd/merge_bench/{db}/{db}_base.fvecs')
+    #     query = fvecs_read(f'/mnt/ssd/merge_bench/{db}/{db}_query.fvecs')
+    #     print(f'{db} : {data.shape}; query : {query.shape}')
     # data = fvecs_read('/home/jlc/research/nsg-merge/data/sift/random/bi-index-data/sift_query.fvecs')
     # q100 = data[:100,:]
     # q1000 = data[:1000,:]
@@ -235,3 +209,11 @@ if __name__ == "__main__":
     # print(q1000.shape)
     # fvecs_write('/home/jlc/research/nsg-merge/data/sift/random/bi-index-data/sift_100query.fvecs', q100)
     # fvecs_write('/home/jlc/research/nsg-merge/data/sift/random/bi-index-data/sift_1000query.fvecs', q1000)
+
+    max_num = 0
+    for i in range(1,11):
+        data = fvecs_mmap(f'/mnt/ssd/merge_bench/deep10m/overlap/multi-index-data/10parts/deep10m_centroid_{i}.fvecs')
+        print(data.shape[0])
+        if data.shape[0] > max_num:
+            max_num = data.shape[0]
+    print(f'max num: {max_num}')

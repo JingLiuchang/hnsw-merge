@@ -22,7 +22,7 @@
 #define S 4.0
 
 void add_circulant_edges_k2(unsigned n,
-                            unsigned t_max,            // 加入 1..t_max
+                            unsigned t_max,            // 1..t_max
                             std::vector<std::pair<unsigned, unsigned>>& merge_order)
 {
     for (unsigned t = 1; t <= t_max; t++) {
@@ -83,7 +83,7 @@ void add_circulant_edges_k2(unsigned n,
     }
 }
 
-void unweighted_graph_order(unsigned m, std::vector<std::pair<unsigned, unsigned>>& merge_order)
+void unweighted_graph_order(unsigned m, std::vector<std::pair<unsigned, unsigned>>& merge_order) // circulant order for random partition
 {
     unsigned tc = 0;
     if (m%2 == 0)
@@ -100,12 +100,6 @@ void unweighted_graph_order(unsigned m, std::vector<std::pair<unsigned, unsigned
     unsigned t = std::max(tc, tm) / 2;
     add_circulant_edges_k2(m, t, merge_order);
 }
-
-void weighted_graph_order(unsigned m, std::vector<std::pair<unsigned, unsigned>>& merge_order)
-{
-
-}
-
 
 namespace hnswlib {
 typedef unsigned int tableint;
@@ -129,8 +123,8 @@ class MergeHierarchicalNSW : public HierarchicalNSW<dist_t> {
     size_t ef_construction_{0};
     size_t ef_{0};
 
-    double mult_{0.0}, revSize_{0.0}; // 没用
-    int maxlevel_{0}; // 图索引当前的最大层数
+    double mult_{0.0}, revSize_{0.0};
+    int maxlevel_{0}; // maximum levels
 
     std::unique_ptr<VisitedListPool> visited_list_pool_{nullptr};
 
@@ -196,9 +190,9 @@ class MergeHierarchicalNSW : public HierarchicalNSW<dist_t> {
         size_t random_seed = 100,
         bool allow_replace_deleted = false)
         : HierarchicalNSW<dist_t>(s, max_elements, M, ef_construction, random_seed),
-            label_op_locks_(MAX_LABEL_OPERATION_LOCKS), // label: data + dim * label, 最多并行MAX_LABEL_OPERATION_LOCKS
-            link_list_locks_(max_elements), // 每个向量都有一个，用于更新自己的邻居表。不仅作用于新增向量本身，而且作用于涉及的邻居节点。(反向边时)
-            element_levels_(max_elements), // 每个向量的最高层layer id, 索引是内部id
+            label_op_locks_(MAX_LABEL_OPERATION_LOCKS), // label: data + dim * label, the maximum threads: MAX_LABEL_OPERATION_LOCKS
+            link_list_locks_(max_elements), // Each vector has a corresponding function to update its neighbor table. This function applies not only to the newly created vector itself but also to the involved neighbor nodes (especially with reverse edges).
+            element_levels_(max_elements), // The highest-level layer ID for each vector, with the index being the internal ID.
             allow_replace_deleted_(allow_replace_deleted){
         max_elements_ = max_elements;
         num_deleted_ = 0;
@@ -220,30 +214,30 @@ class MergeHierarchicalNSW : public HierarchicalNSW<dist_t> {
         level_generator_.seed(random_seed);
         update_probability_generator_.seed(random_seed + 1);
 
-        size_links_level0_ = maxM0_ * sizeof(tableint) + sizeof(linklistsizeint); // 邻居id数组+邻居数量(第0层)
-        size_data_per_element_ = size_links_level0_ + data_size_ + sizeof(labeltype); // 邻居id数组+邻居数量+向量数据+label: 图中的一条完整数据的大小(第0层)
+        size_links_level0_ = maxM0_ * sizeof(tableint) + sizeof(linklistsizeint); // Neighbor ID array + Number of neighbors (Level 0)
+        size_data_per_element_ = size_links_level0_ + data_size_ + sizeof(labeltype); // Neighbor ID array + number of neighbors + vector data + label: Size of a complete data point in the graph (level 0).
         offsetData_ = size_links_level0_;
         label_offset_ = size_links_level0_ + data_size_;
         offsetLevel0_ = 0;
 
-        data_level0_memory_ = (char *) malloc(max_elements_ * size_data_per_element_); // 分配最大占用内存(第0层)
+        data_level0_memory_ = (char *) malloc(max_elements_ * size_data_per_element_); // Allocate maximum memory usage (Level 0)
         if (data_level0_memory_ == nullptr)
             throw std::runtime_error("Not enough memory");
 
-        cur_element_count = 0; // 已插入点数目
+        cur_element_count = 0; // inserted nodes number
 
-        visited_list_pool_ = std::unique_ptr<VisitedListPool>(new VisitedListPool(1, max_elements)); // 图操作经常需要判断哪些节点已经走过，这里提供一个已经申请好空间的池子，减少内存频繁申请释放的开销
+        visited_list_pool_ = std::unique_ptr<VisitedListPool>(new VisitedListPool(1, max_elements));
 
         // initializations for special treatment of the first node
-        enterpoint_node_ = -1; // 内部id
+        enterpoint_node_ = -1; // internal id
         maxlevel_ = -1;
 
         linkLists_ = (char **) malloc(sizeof(void *) * max_elements_);
         if (linkLists_ == nullptr)
             throw std::runtime_error("Not enough memory: MergeHierarchicalNSW failed to allocate linklists");
-        size_links_per_element_ = maxM_ * sizeof(tableint) + sizeof(linklistsizeint); // 邻居id数组+邻居数量(非0层), linklist中一个元素的大小, 其中linklistsizeint(unsigned int 4B)中的前unsigned short int(2B)是邻居数量，其他位置和增删有关
+        size_links_per_element_ = maxM_ * sizeof(tableint) + sizeof(linklistsizeint); // The neighbor ID array plus the number of neighbors (not at level 0), and the size of an element in the linklist. The first 2 bytes of `linklistsizeint(unsigned int 4B)` represent the number of neighbors; the remaining bytes are related to adding or deleting elements.
         mult_ = 1 / log(1.0 * M_);
-        revSize_ = 1.0 / mult_; // 没用
+        revSize_ = 1.0 / mult_;
     }
 
 
@@ -280,7 +274,7 @@ class MergeHierarchicalNSW : public HierarchicalNSW<dist_t> {
 
     inline std::mutex& getLabelOpMutex(labeltype label) const {
         // calculate hash
-        size_t lock_id = label & (MAX_LABEL_OPERATION_LOCKS - 1); // 最多并发MAX_LABEL_OPERATION_LOCKS - 1
+        size_t lock_id = label & (MAX_LABEL_OPERATION_LOCKS - 1);
         return label_op_locks_[lock_id];
     }
 
@@ -597,7 +591,7 @@ class MergeHierarchicalNSW : public HierarchicalNSW<dist_t> {
 
 
     linklistsizeint *get_linklist(tableint internal_id, int level) const {
-        return (linklistsizeint *) (linkLists_[internal_id] + (level - 1) * size_links_per_element_); // level - 1 是因为linklist只存储了非0层
+        return (linklistsizeint *) (linkLists_[internal_id] + (level - 1) * size_links_per_element_); // The level is -1 because the linked list only stores non-zero levels.
     }
 
 
@@ -678,19 +672,19 @@ class MergeHierarchicalNSW : public HierarchicalNSW<dist_t> {
             if (isUpdate) {
                 for (size_t j = 0; j < sz_link_list_other; j++) {
                     if (data[j] == cur_c) {
-                        is_cur_c_present = true; // 已有反向边
+                        is_cur_c_present = true; // reverse edges exits
                         break;
                     }
                 }
             }
 
-            // 只有反向边不存在时才执行接下来的内容
+            // When reverse edge does not exist, perform insertion
             // If cur_c is already present in the neighboring connections of `selectedNeighbors[idx]` then no need to modify any connections or run the heuristics.
             if (!is_cur_c_present) {
-                if (sz_link_list_other < Mcurmax) { // 还未满，加在末尾并修改邻居数目
+                if (sz_link_list_other < Mcurmax) { // not full, direct insert
                     data[sz_link_list_other] = cur_c;
                     setListCount(ll_other, sz_link_list_other + 1);
-                } else { // 若满了则裁剪一次
+                } else { // full, conduct pruning
                     // finding the "weakest" element to replace it with the new one
                     dist_t d_max = fstdistfunc_(getDataByInternalId(cur_c), getDataByInternalId(selectedNeighbors[idx]),
                                                 dist_func_param_);
@@ -752,7 +746,7 @@ class MergeHierarchicalNSW : public HierarchicalNSW<dist_t> {
             top_candidates.pop();
         }
 
-        // 正向边(直接覆盖)
+        // outgoing edges
         {
             // lock only during the update
             // because during the addition the lock for cur_c is already acquired
@@ -778,7 +772,7 @@ class MergeHierarchicalNSW : public HierarchicalNSW<dist_t> {
             }
         }
 
-        // 反向边
+        // reverse edges
         for (size_t idx = 0; idx < selectedNeighbors.size(); idx++) {
             std::unique_lock <std::mutex> lock(link_list_locks_[selectedNeighbors[idx]]);
 
@@ -802,19 +796,19 @@ class MergeHierarchicalNSW : public HierarchicalNSW<dist_t> {
             bool is_cur_c_present = false;
             for (size_t j = 0; j < sz_link_list_other; j++) {
                 if (data[j] == cur_c) {
-                    is_cur_c_present = true; // 已有反向边
+                    is_cur_c_present = true; // reverse edge already exists
                     break;
                 }
             }
 
 
-            // 只有反向边不存在时才执行接下来的内容
+            // When reverse edge does not exist, perform insertion
             // If cur_c is already present in the neighboring connections of `selectedNeighbors[idx]` then no need to modify any connections or run the heuristics.
             if (!is_cur_c_present) {
-                if (sz_link_list_other < Mcurmax) { // 还未满，加在末尾并修改邻居数目
+                if (sz_link_list_other < Mcurmax) { // not full, direct insert
                     data[sz_link_list_other] = cur_c;
                     setListCount(ll_other, sz_link_list_other + 1);
-                } else { // 若满了则裁剪一次
+                } else { // full, conduct pruning
                     // finding the "weakest" element to replace it with the new one
                     dist_t d_max = fstdistfunc_(getDataByInternalId(cur_c), getDataByInternalId(selectedNeighbors[idx]),
                                                 dist_func_param_);
@@ -1165,7 +1159,7 @@ class MergeHierarchicalNSW : public HierarchicalNSW<dist_t> {
 
 
     unsigned short int getListCount(linklistsizeint * ptr) const {
-        return *((unsigned short int *)ptr); // 实际的邻居数目是一个unsigned short int类型
+        return *((unsigned short int *)ptr); // nnbrs : unsigned short int type
     }
 
 
@@ -1181,17 +1175,17 @@ class MergeHierarchicalNSW : public HierarchicalNSW<dist_t> {
     void addPoint(const void *data_point, labeltype label, bool replace_deleted = false) {
         if ((allow_replace_deleted_ == false) && (replace_deleted == true)) {
             throw std::runtime_error("Replacement of deleted elements is disabled in constructor");
-        } // 增删相关
+        }
 
         // lock all operations with element by label
-        std::unique_lock <std::mutex> lock_label(getLabelOpMutex(label)); // 最多并发MAX_LABEL_OPERATION_LOCKS - 1个label
+        std::unique_lock <std::mutex> lock_label(getLabelOpMutex(label));
         if (!replace_deleted) {
             addPoint(data_point, label, -1);
             return;
         }
 
 
-        // 以下均与增删有关, 略
+        // insert and delete related
         // check if there is vacant place
         tableint internal_id_replaced;
         std::unique_lock <std::mutex> lock_deleted_elements(deleted_elements_lock);
@@ -1203,10 +1197,10 @@ class MergeHierarchicalNSW : public HierarchicalNSW<dist_t> {
         lock_deleted_elements.unlock();
 
         // if there is no vacant place then add or update point
-        // else add point to vacant place  (删除后空缺的位置)
-        if (!is_vacant_place) { // 没有删除后空缺的位置
+        // else add point to vacant place
+        if (!is_vacant_place) {
             addPoint(data_point, label, -1);
-        } else { // 有删除后空缺的位置
+        } else {
             // we assume that there are no concurrent operations on deleted element
             labeltype label_replaced = getExternalLabel(internal_id_replaced);
             setExternalLabel(internal_id_replaced, label);
@@ -1381,7 +1375,7 @@ class MergeHierarchicalNSW : public HierarchicalNSW<dist_t> {
 
 
     tableint addPoint(const void *data_point, labeltype label, int level) {
-        tableint cur_c = 0; // 内部id
+        tableint cur_c = 0; // internal id
         { // update
             // Checking if the element with the same label already exists
             // if so, updating it *instead* of creating a new element.
@@ -1413,50 +1407,48 @@ class MergeHierarchicalNSW : public HierarchicalNSW<dist_t> {
             label_lookup_[label] = cur_c;
         }
 
-        // 对于新插入的点:
-
-        std::unique_lock <std::mutex> lock_el(link_list_locks_[cur_c]); // link_list_locks_[cur_c] 表示要锁定的互斥锁, 每个点一把锁, 只能锁住自己的
+        std::unique_lock <std::mutex> lock_el(link_list_locks_[cur_c]);
         int curlevel = getRandomLevel(mult_);
-        if (level > 0) // 若有指定level
+        if (level > 0)
             curlevel = level;
 
-        element_levels_[cur_c] = curlevel; // 记录cur_c的最高level
+        element_levels_[cur_c] = curlevel; // highest level of cur_c
 
-        std::unique_lock <std::mutex> templock(global); // 只有global这一把锁, 保证只有一个线程可以更改maxlevel
+        std::unique_lock <std::mutex> templock(global); // locking maxlevel with global
         int maxlevelcopy = maxlevel_;
         if (curlevel <= maxlevelcopy)
-            templock.unlock(); // 及时释放, maxlevelcopy记录当前观察到的maxlevel, 若大于maxlevel为啥不在这里更新后立即释放, 这里不释放是否会阻塞其他线程?
-        tableint currObj = enterpoint_node_; // 没有点时为-1
+            templock.unlock();
+        tableint currObj = enterpoint_node_; // init: -1
         tableint enterpoint_copy = enterpoint_node_;
 
-        memset(data_level0_memory_ + cur_c * size_data_per_element_ + offsetLevel0_, 0, size_data_per_element_); // 初始化cur_c的一条数据(邻居数、邻居id列表、向量数据、label)
+        memset(data_level0_memory_ + cur_c * size_data_per_element_ + offsetLevel0_, 0, size_data_per_element_); // init cur_c's data (nnbrs, nids, vector, label)
 
         // Initialisation of the data and label
-        memcpy(getExternalLabeLp(cur_c), &label, sizeof(labeltype)); // label = external id = partition id, 写到cur_c的数据的label位上
-        memcpy(getDataByInternalId(cur_c), data_point, data_size_); // internal id仅代表在level0的图索引内存表示中的行号, 写入cur_c的数据的向量位
+        memcpy(getExternalLabeLp(cur_c), &label, sizeof(labeltype)); // label = external id = partition id, write to cur_c's label
+        memcpy(getDataByInternalId(cur_c), data_point, data_size_); // internal id: row number of level0's index layout
 
-        if (curlevel) { // 非0代表不止存在于level0, linklist中只存储level>0的邻居, 第0层的单独自己存储在data_level0_memory_
-            linkLists_[cur_c] = (char *) malloc(size_links_per_element_ * curlevel + 1); // cur_c有curlevel层, 每层size_links_per_element_字节, 多一个字节存储curlevel?
+        if (curlevel) {
+            linkLists_[cur_c] = (char *) malloc(size_links_per_element_ * curlevel + 1);
             if (linkLists_[cur_c] == nullptr)
                 throw std::runtime_error("Not enough memory: addPoint failed to allocate linklist");
             memset(linkLists_[cur_c], 0, size_links_per_element_ * curlevel + 1);
         }
 
-        if ((signed)currObj != -1) { // 非第一个插入点, 向已有index插入点
-            if (curlevel < maxlevelcopy) { // 非最高层, 先greedy search找到curlevel的入口点
+        if ((signed)currObj != -1) { // inserting to non-first point
+            if (curlevel < maxlevelcopy) { // greedy search to curlevel's ep
                 dist_t curdist = fstdistfunc_(data_point, getDataByInternalId(currObj), dist_func_param_);
-                for (int level = maxlevelcopy; level > curlevel; level--) { // 每层 greedy search
+                for (int level = maxlevelcopy; level > curlevel; level--) {
                     bool changed = true;
                     while (changed) {
                         changed = false;
                         unsigned int *data;
                         std::unique_lock <std::mutex> lock(link_list_locks_[currObj]);
-                        data = get_linklist(currObj, level); // data 是 currObj在level层的邻居列表
-                        int size = getListCount(data); // 邻居数目
+                        data = get_linklist(currObj, level); // currObj's nids at level
+                        int size = getListCount(data); // nnbrs
 
-                        tableint *datal = (tableint *) (data + 1); // +1是跳过开头4B的linklistsizeint, 这里面是邻居数目和增删指示位, linklistsizeint = tableint = unsigned int
+                        tableint *datal = (tableint *) (data + 1); // +1: skipping 4B of linklistsizeint, linklistsizeint = tableint = unsigned int
                         for (int i = 0; i < size; i++) {
-                            tableint cand = datal[i]; // cand: 邻居internal id
+                            tableint cand = datal[i]; // cand: neighbor's internal id
                             if (cand < 0 || cand > max_elements_)
                                 throw std::runtime_error("cand error");
                             dist_t d = fstdistfunc_(data_point, getDataByInternalId(cand), dist_func_param_);
@@ -1470,10 +1462,10 @@ class MergeHierarchicalNSW : public HierarchicalNSW<dist_t> {
                 }
             }
 
-            // 给以下各层插入这个新点
+            // insert to lower levels
             bool epDeleted = isMarkedDeleted(enterpoint_copy);
             for (int level = std::min(curlevel, maxlevelcopy); level >= 0; level--) {
-                if (level > maxlevelcopy || level < 0)  // possible?
+                if (level > maxlevelcopy || level < 0)
                     throw std::runtime_error("Level error");
 
                 std::priority_queue<std::pair<dist_t, tableint>, std::vector<std::pair<dist_t, tableint>>, CompareByFirst> top_candidates = searchBaseLayer(
@@ -1485,15 +1477,15 @@ class MergeHierarchicalNSW : public HierarchicalNSW<dist_t> {
                 }
                 currObj = mutuallyConnectNewElement(data_point, cur_c, top_candidates, level, false); // pruning and connect
             }
-        } else { // 第一个插入点
-            // Do nothing for the first element, 内存表示也已经完成(第一个点就是全0)
+        } else { // the first element inserted, no ep
+            // Do nothing for the first element
             enterpoint_node_ = 0;
             maxlevel_ = curlevel;
         }
 
         // Releasing lock for the maximum level
         if (curlevel > maxlevelcopy) {
-            enterpoint_node_ = cur_c; // ep总是最高层的点
+            enterpoint_node_ = cur_c; // ep is always the element with highest level
             maxlevel_ = curlevel;
         }
         return cur_c;
@@ -1656,7 +1648,7 @@ class MergeHierarchicalNSW : public HierarchicalNSW<dist_t> {
             size_t size_i = graphs[i]->max_elements_;
             globalid_offset[i] = global_id_offset;
 
-            for (size_t local_id = 0; local_id < size_i; ++local_id) { // local id 和 global id均为label
+            for (size_t local_id = 0; local_id < size_i; ++local_id) { // local id and global id are labeltype
                 mergeidtype global_id = global_id_offset + local_id;
                 mergeid_lookup_[global_id] = std::make_pair(static_cast<tableint>(local_id), i);
             }
@@ -1668,12 +1660,12 @@ class MergeHierarchicalNSW : public HierarchicalNSW<dist_t> {
         merge_order.clear();
         for (unsigned i = 0; i < m; ++i) {
             for (unsigned j = i + 1; j < m; ++j) {
-                merge_order.emplace_back(i, j); // 添加配对 (i, j), 表示两个merge i into j和 j into i
+                merge_order.emplace_back(i, j);
             }
         }
     }
 
-    void init_merge_graph_level0(std::vector<HierarchicalNSW<dist_t>*> graphs) // 初始化合并G的level0
+    void init_merge_graph_level0(std::vector<HierarchicalNSW<dist_t>*> graphs)
     {
         cur_element_count = max_elements_;
 
@@ -1684,11 +1676,11 @@ class MergeHierarchicalNSW : public HierarchicalNSW<dist_t> {
             if (graph->maxlevel_ > maxlevel_) {
                 maxlevel_ = graph->maxlevel_;
                 labeltype graph_ep = graph->getExternalLabel(graph->enterpoint_node_);
-                enterpoint_node_ = getGlobalidbyLocalid(graph_ep, i); // 更新G的入口点
+                enterpoint_node_ = getGlobalidbyLocalid(graph_ep, i);
             }
         }
 
-        maxlevel_ = 0; // 假设G只有最底层
+        maxlevel_ = 0;
 
         size_t graph_offset = 0;
         for (unsigned graphid =0; graphid < graphs.size(); ++graphid)
@@ -1703,12 +1695,12 @@ class MergeHierarchicalNSW : public HierarchicalNSW<dist_t> {
 
                 memset(copy_element_data, 0, size_data_per_element_);
 
-                // 复制数据
+                // copying data
                 memcpy(copy_element_data, cur_element_data, graph->size_links_level0_); // linklistsizeint 4B + maxM0 * sizeof(tableint) copy
                 memcpy(copy_element_data + offsetData_, cur_element_data + graph->offsetData_, data_size_); // vector copy
                 memcpy(copy_element_data + label_offset_, cur_element_data + graph->label_offset_, sizeof(labeltype)); // label copy
 
-                // 映射id
+                // mapping id
                 unsigned short int neighbor_count = getListCount((linklistsizeint*) copy_element_data);
                 for (unsigned i = 0; i < neighbor_count; ++i)
                 {
@@ -1716,14 +1708,14 @@ class MergeHierarchicalNSW : public HierarchicalNSW<dist_t> {
                     tableint global_internalid = internalid + globalid_offset[graphid];
                     *(tableint*)(copy_element_data + sizeof(linklistsizeint) + i * sizeof(tableint)) = global_internalid;
                 }
-                labeltype local_id = *(labeltype *)(copy_element_data + label_offset_); // 更改label位id
+                labeltype local_id = *(labeltype *)(copy_element_data + label_offset_); // mapping label id
                 mergeidtype global_id = getGlobalidbyLocalid(local_id, graphid);
                 *(labeltype *)(copy_element_data + label_offset_) = global_id;
             }
         }
     }
 
-    void mgraph_merge(unsigned m, std::vector<HierarchicalNSW<dist_t>*> graphs, const Parameters &parameters) // 直接update MergeHierarchicalNSW
+    void mgraph_merge(unsigned m, std::vector<HierarchicalNSW<dist_t>*> graphs, const Parameters &parameters)
     {
         std::string method = parameters.Get<std::string>("method");
         std::string merge_order_selection = parameters.Get<std::string>("merge_order_selection");
@@ -1741,7 +1733,6 @@ class MergeHierarchicalNSW : public HierarchicalNSW<dist_t> {
             return;
         }
 
-        // 初始化G
         initialize_mergeid_lookup(graphs);
         init_merge_graph_level0(graphs);
 
@@ -1781,8 +1772,8 @@ class MergeHierarchicalNSW : public HierarchicalNSW<dist_t> {
                 nodes[i] = i;
             }
 
-            unsigned seed = 42;  // 固定种子值
-            std::mt19937 g(seed); // 使用固定种子初始化生成器
+            unsigned seed = 42;
+            std::mt19937 g(seed);
             std::shuffle(nodes.begin(), nodes.end(), g);
 
             for (unsigned i = 0; i < m; ++i) {
@@ -1826,8 +1817,8 @@ class MergeHierarchicalNSW : public HierarchicalNSW<dist_t> {
                 nodes[i] = i;
             }
 
-            unsigned seed = 42;  // 固定种子值
-            std::mt19937 g(seed); // 使用固定种子初始化生成器
+            unsigned seed = 42;
+            std::mt19937 g(seed);
             std::shuffle(nodes.begin(), nodes.end(), g);
 
             for (unsigned i = 0; i < m-1; ++i) {
@@ -1845,7 +1836,7 @@ class MergeHierarchicalNSW : public HierarchicalNSW<dist_t> {
             std::vector<std::vector<float>> G = read_fvecs(merge_order_file);
             for (unsigned i = 0; i < m; ++i)
             {
-                for (unsigned j = 0; j < m; ++j)
+                for (unsigned j = i + 1; j < m; ++j)
                 {
                     if (G[i][j] != 0)
                     {
@@ -1874,85 +1865,18 @@ class MergeHierarchicalNSW : public HierarchicalNSW<dist_t> {
                 nodes[i] = i;
             }
 
-            unsigned seed = 42;  // 固定种子值
-            std::mt19937 g(seed); // 使用固定种子初始化生成器
+            unsigned seed = 42;
+            std::mt19937 g(seed);
             std::shuffle(nodes.begin(), nodes.end(), g);
 
-            // Petersen图的边（基于标准编号0-9）
-            // 外圈5个顶点：0,1,2,3,4 形成五边形
-            // 内圈5个顶点：5,6,7,8,9 形成五角星
+            // Petersen graph
             std::vector<std::pair<unsigned, unsigned>> petersen_edges = {
                 {0, 1}, {1, 2}, {2, 3}, {3, 4}, {4, 0}, {0,2}, {1,3}, {2,4}, {3,0}, {4,1}, {0, 6}, {1, 7}, {2, 8}, {3, 9}, {4, 5},
                 {5, 7}, {7, 9}, {9, 6}, {6, 8}, {8, 5}, {5,6}, {6,7}, {7,8}, {8,9}, {9,5}, {5, 1}, {6, 2}, {7, 3}, {8, 4}, {9, 0},
                 {0, 5}, {1, 6}, {2, 7}, {3, 8}, {4, 9}
             };
 
-            // 将边映射到随机打乱后的节点编号
             for (const auto& edge : petersen_edges) {
-                unsigned u = nodes[edge.first];
-                unsigned v = nodes[edge.second];
-                merge_order.push_back({std::min(u, v), std::max(u, v)});
-            }
-        }
-        else if (merge_order_selection == "hoffman-singleton")
-        {
-            std::cout << "Hoffman-Singleton merge order selected." << std::endl;
-            if (m != 50)
-            {
-                std::cerr << "Error: hoffman-singleton merge order only supports 50 graphs." << std::endl;
-                exit(1);
-            }
-            std::vector<unsigned> nodes(m);
-
-            for (unsigned i = 0; i < m; ++i) {
-                nodes[i] = i;
-            }
-
-            unsigned seed = 42;  // 固定种子值
-            std::mt19937 g(seed); // 使用固定种子初始化生成器
-            std::shuffle(nodes.begin(), nodes.end(), g);
-
-            // Hoffman-Singleton图的构造
-            // 使用五边形-五角星构造法：
-            // 顶点0-24: 5个五边形（每个5个顶点）
-            // 顶点25-49: 5个五角星（每个5个顶点）
-
-            std::vector<std::pair<unsigned, unsigned>> hs_edges;
-
-            // 1. 每个五边形内部的边（5个五边形）
-            for (unsigned p = 0; p < 5; ++p) {
-                for (unsigned i = 0; i < 5; ++i) {
-                    unsigned v1 = p * 5 + i;
-                    unsigned v2 = p * 5 + ((i + 1) % 5);
-                    hs_edges.push_back({v1, v2});
-                }
-            }
-
-            // 2. 每个五角星内部的边（5个五角星）
-            for (unsigned s = 0; s < 5; ++s) {
-                for (unsigned i = 0; i < 5; ++i) {
-                    unsigned v1 = 25 + s * 5 + i;
-                    unsigned v2 = 25 + s * 5 + ((i + 2) % 5);  // 五角星：每个顶点连接到间隔一个的顶点
-                    hs_edges.push_back({v1, v2});
-                }
-            }
-
-            // 3. 五边形和五角星之间的连接
-            // 五边形p的顶点i连接到五角星s的顶点j，其中j = (i + p*h) mod 5
-            // h是连接参数，对于Hoffman-Singleton图，使用特定的连接规则
-            for (unsigned p = 0; p < 5; ++p) {
-                for (unsigned i = 0; i < 5; ++i) {
-                    for (unsigned s = 0; s < 5; ++s) {
-                        unsigned j = (i + p * s) % 5;
-                        unsigned pentagon_vertex = p * 5 + i;
-                        unsigned pentagram_vertex = 25 + s * 5 + j;
-                        hs_edges.push_back({pentagon_vertex, pentagram_vertex});
-                    }
-                }
-            }
-
-            // 将边映射到随机打乱后的节点编号
-            for (const auto& edge : hs_edges) {
                 unsigned u = nodes[edge.first];
                 unsigned v = nodes[edge.second];
                 merge_order.push_back({std::min(u, v), std::max(u, v)});
@@ -1968,15 +1892,13 @@ class MergeHierarchicalNSW : public HierarchicalNSW<dist_t> {
         if (method == "NGM")
         {
             for (auto&& p : merge_order) { // pairwise merge
-                NGM_merge_into_later(graphs, p.first, p.second, ef_construction_, parameters); // first merge into second
-                //NGM_merge_into_later(graphs, p.second, p.first, ef_construction_, parameters); // second merge into first
+                NGM_merge_into_later(graphs, p.first, p.second, ef_construction_, parameters);
             }
         }
         else if (method == "RGTM")
         {
             for (auto&& p : merge_order) { // pairwise merge
-                RGTM_merge_into_later(graphs, p.first, p.second, parameters); // first merge into second
-                //RGTM_merge_into_later(graphs, p.second, p.first, parameters); // second merge into first
+                RGTM_merge_into_later(graphs, p.first, p.second, parameters);
             }
         }
         else
@@ -1990,7 +1912,7 @@ class MergeHierarchicalNSW : public HierarchicalNSW<dist_t> {
         const std::vector<std::pair<labeltype, unsigned>>& assignments,
         std::vector<std::vector<labeltype>>& idmaps,
         std::vector<std::unordered_map<unsigned, size_t>>& global_to_local_map,
-        const Parameters &parameters) // 直接update MergeHierarchicalNSW
+        const Parameters &parameters)
     {
         bool print = parameters.Get<bool>("print");
         unsigned kbase = parameters.Get<unsigned>("kbase");
@@ -2021,7 +1943,7 @@ class MergeHierarchicalNSW : public HierarchicalNSW<dist_t> {
         labeltype cur_id = 0;
         for (std::pair<labeltype, unsigned> gid_cid : assignments)
         {
-            labeltype global_label = gid_cid.first; // merge 此点
+            labeltype global_label = gid_cid.first; // merge
             unsigned centroid_id = gid_cid.second;
             labeltype local_label = global_to_local_map[global_label][centroid_id];
             HierarchicalNSW<dist_t>* graph = graphs[centroid_id];
@@ -2036,8 +1958,8 @@ class MergeHierarchicalNSW : public HierarchicalNSW<dist_t> {
 
                 memset(data_level0_memory_ + cur_id * size_data_per_element_ + offsetLevel0_, 0, size_data_per_element_);
                 // Initialisation of the data and label
-                memcpy(getExternalLabeLp(cur_id), &cur_id, sizeof(labeltype)); // label = external id = partition id, 写到cur_c的数据的label位上
-                memcpy(getDataByInternalId(cur_id), data + cur_id * dim, data_size_); // internal id仅代表在level0的图索引内存表示中的行号, 写入cur_c的数据的向量位
+                memcpy(getExternalLabeLp(cur_id), &cur_id, sizeof(labeltype)); // label = external id = partition id, writing to cur_c's label
+                memcpy(getDataByInternalId(cur_id), data + cur_id * dim, data_size_); // internal id: row number of level0's index layout, writing cur_c's vector
                 linklistsizeint* ll_cur = get_linklist0(cur_id);
                 setListCount(ll_cur, nnbrs);
                 tableint *linklist = (tableint*)(ll_cur + 1);
@@ -2093,8 +2015,8 @@ class MergeHierarchicalNSW : public HierarchicalNSW<dist_t> {
 
         memset(data_level0_memory_ + cur_id * size_data_per_element_ + offsetLevel0_, 0, size_data_per_element_);
         // Initialisation of the data and label
-        memcpy(getExternalLabeLp(cur_id), &cur_id, sizeof(labeltype)); // label = external id = partition id, 写到cur_c的数据的label位上
-        memcpy(getDataByInternalId(cur_id), data + cur_id * dim, data_size_); // internal id仅代表在level0的图索引内存表示中的行号, 写入cur_c的数据的向量位
+        memcpy(getExternalLabeLp(cur_id), &cur_id, sizeof(labeltype));
+        memcpy(getDataByInternalId(cur_id), data + cur_id * dim, data_size_);
         linklistsizeint* ll_cur = get_linklist0(cur_id);
         setListCount(ll_cur, nnbrs);
         tableint *linklist = (tableint*)(ll_cur + 1);
@@ -2119,12 +2041,11 @@ class MergeHierarchicalNSW : public HierarchicalNSW<dist_t> {
             }
         }
 
-        maxlevel_ = 0; // 假设G只有最底层
+        maxlevel_ = 0;
 
         std::cout << std::endl;
     }
 
-    // ET相关
     void update_hits_counter(const std::vector<tableint>& selectedNeighbors,
                         const std::pair<size_t, size_t>& hit_range,
                         std::vector<std::atomic<uint8_t>>& hits,
@@ -2142,12 +2063,12 @@ class MergeHierarchicalNSW : public HierarchicalNSW<dist_t> {
         }
     }
 
-    // G1 into G2 的merge, 改变G1. G2 search G1.x
     void NGM_merge_into_later(std::vector<HierarchicalNSW<dist_t>*> graphs, unsigned G1_id, unsigned G2_id, size_t ef_merge, const Parameters &parameters)
     {
         HierarchicalNSW<dist_t>* G1 = graphs[G1_id];
         HierarchicalNSW<dist_t>* G2 = graphs[G2_id];
 
+        // TODO: no use parameters
         bool et = parameters.Get<bool>("early_terminate");
         float ratio = parameters.Get<float>("et_ratio");
         size_t target_hits = static_cast<size_t>(ratio * G2->cur_element_count);
@@ -2163,7 +2084,7 @@ class MergeHierarchicalNSW : public HierarchicalNSW<dist_t> {
         for (tableint internal_id = 0; internal_id < G1->cur_element_count; ++internal_id)
         {
             if (et && should_terminate.load(std::memory_order_acquire)) {
-                continue; // 跳过剩余迭代
+                continue; // TODO: no use code
             }
 
             float* data_point = (float*) G1->getDataByInternalId(internal_id);
@@ -2171,7 +2092,7 @@ class MergeHierarchicalNSW : public HierarchicalNSW<dist_t> {
             temp_candidates = G2->Global_merge(data_point, ef_merge);
             std::priority_queue<std::pair<dist_t, tableint>, std::vector<std::pair<dist_t, tableint>>, CompareByFirst> top_candidates;
 
-            // pruning candidateset 和 更新目标都转化为合并图G中的internal id
+            // pruning candidateset -> internal id of merged graph
             while (!temp_candidates.empty()) {
                 auto candidate = temp_candidates.top();
                 temp_candidates.pop();
@@ -2179,7 +2100,7 @@ class MergeHierarchicalNSW : public HierarchicalNSW<dist_t> {
             }
             tableint merged_internal_id = internal_id + globalid_offset[G1_id];
 
-            // top_candidates中加入原本邻居
+            // top_candidates <-- original neighbors
             linklistsizeint* cur_element_data = get_linklist0(merged_internal_id);
             unsigned short int neighbor_count = getListCount(cur_element_data);
             for (unsigned i = 0; i < neighbor_count; ++i)
@@ -2188,8 +2109,7 @@ class MergeHierarchicalNSW : public HierarchicalNSW<dist_t> {
                 top_candidates.push({fstdistfunc_(data_point, getDataByInternalId(neighbor_internalid), dist_func_param_), neighbor_internalid});
             }
 
-            std::vector<tableint> selectedNeighbors = Pruning_InterInsert(data_point, merged_internal_id, top_candidates, 0); // 更新merged_internal_id的邻居并添加反向边
-
+            std::vector<tableint> selectedNeighbors = Pruning_InterInsert(data_point, merged_internal_id, top_candidates, 0); // updata merged_internal_id's neighborhood and adding reverse edges
             if (et)
             {
                 for (tableint selected_id: selectedNeighbors)
@@ -2202,7 +2122,7 @@ class MergeHierarchicalNSW : public HierarchicalNSW<dist_t> {
 
                             if (total_hits >= target_hits) {
                                 should_terminate.store(true, std::memory_order_release);
-                                break; // 退出内层循环
+                                break;
                             }
                         }
                     }
@@ -2236,7 +2156,7 @@ class MergeHierarchicalNSW : public HierarchicalNSW<dist_t> {
         // step2 construct reverse NN
         std::vector<reverseNN_info> Rks;
         Rks.resize(G->cur_element_count);
-        std::vector<std::mutex> rks_mutexes(G->cur_element_count);  // 每个点一个独立的锁
+        std::vector<std::mutex> rks_mutexes(G->cur_element_count);  // lock for each Rks entry
 
         for (tableint internal_id = 0; internal_id < G->cur_element_count; ++internal_id) {
             Rks[internal_id] = reverseNN_info(internal_id);
@@ -2263,8 +2183,8 @@ class MergeHierarchicalNSW : public HierarchicalNSW<dist_t> {
         std::vector<block_info> blocks;
         blocks.reserve(G->cur_element_count);
         for (tableint internal_id = 0; internal_id < G->cur_element_count; ++internal_id) {
-            tableint bid = Rks[internal_id].id; // 取出当前block的中心点id
-            if (considered[bid] == 1) continue; // 如果这个点已经被hit过了，跳过
+            tableint bid = Rks[internal_id].id;
+            if (considered[bid] == 1) continue;
 
             considered[bid] = 1;
             std::vector<tableint> bmembers;
@@ -2288,11 +2208,11 @@ class MergeHierarchicalNSW : public HierarchicalNSW<dist_t> {
         HierarchicalNSW<dist_t>* G2 = graphs[G2_id];
         bool print = parameters.Get<bool>("print");
 
-        // RGTM相关参数
+        // parameters for global merge and local sliding
         unsigned global_ef = ef_construction_;
         unsigned local_ef = parameters.Get<unsigned>("local_ef");
 
-        // ET相关参数
+        // TODO: no use parameters
         bool et = parameters.Get<bool>("early_terminate");
         float ratio = parameters.Get<float>("et_ratio");
         size_t target_hits = static_cast<size_t>(ratio * G2->cur_element_count);
@@ -2315,12 +2235,12 @@ class MergeHierarchicalNSW : public HierarchicalNSW<dist_t> {
             std::cout << "L : G = " << L_cnt << " : " << G_cnt << " = " << (float)L_cnt/G_cnt << std::endl;
         }
 
-        // step5 start merging
+        // start merging
 #pragma omp parallel for schedule(dynamic, 72)
         for (size_t i = 0; i < blocks.size(); ++i) // Global Merge
         {
             if (et && should_terminate.load(std::memory_order_acquire)) {
-                continue; // 跳过剩余迭代
+                continue; // TODO: no use code
             }
 
             tableint global_search_id = blocks[i].bid;
@@ -2331,7 +2251,7 @@ class MergeHierarchicalNSW : public HierarchicalNSW<dist_t> {
             temp_candidates = G2->Global_merge(global_merge_data, global_ef);
             std::priority_queue<std::pair<dist_t, tableint>, std::vector<std::pair<dist_t, tableint>>, CompareByFirst> top_candidates;
 
-            // pruning candidateset 和 更新目标都转化为合并图G中的internal id 并留下local entry points
+            // pruning candidateset -> internal id of merged graph
             std::vector<tableint> starting_ids;
             while (!temp_candidates.empty()) {
                 auto candidate = temp_candidates.top();
@@ -2341,7 +2261,7 @@ class MergeHierarchicalNSW : public HierarchicalNSW<dist_t> {
             }
             tableint merged_internal_id = global_search_id + globalid_offset[G1_id];
 
-            // top_candidates中加入原本邻居
+            // top_candidates <-- original neighbors
             linklistsizeint* cur_element_data = get_linklist0(merged_internal_id);
             unsigned short int neighbor_count = getListCount(cur_element_data);
             for (unsigned k = 0; k < neighbor_count; ++k)
@@ -2350,14 +2270,14 @@ class MergeHierarchicalNSW : public HierarchicalNSW<dist_t> {
                 top_candidates.push({fstdistfunc_(global_merge_data, getDataByInternalId(neighbor_internalid), dist_func_param_), neighbor_internalid});
             }
 
-            std::vector<tableint> selectedNeighbors = Pruning_InterInsert(global_merge_data, merged_internal_id, top_candidates, 0); // 更新merged_internal_id的邻居并添加反向边
+            std::vector<tableint> selectedNeighbors = Pruning_InterInsert(global_merge_data, merged_internal_id, top_candidates, 0); // updata merged_internal_id's neighborhood and adding reverse edges
 
             if (et)
             {
                 update_hits_counter(selectedNeighbors, hit_range, hits, total_hits);
             }
 
-            for (size_t j = 0; j < local_search_members.size(); ++j) // Local Merge
+            for (size_t j = 0; j < local_search_members.size(); ++j) // Local Sliding
             {
                 tableint local_search_id = local_search_members[j];
                 float* local_merge_data = (float*) G1->getDataByInternalId(local_search_id);
@@ -2366,7 +2286,7 @@ class MergeHierarchicalNSW : public HierarchicalNSW<dist_t> {
                 local_temp_candidates = G2->Local_merge(local_merge_data, local_ef, starting_ids);
                 std::priority_queue<std::pair<dist_t, tableint>, std::vector<std::pair<dist_t, tableint>>, CompareByFirst> local_top_candidates;
 
-                // pruning candidateset 和 更新目标都转化为合并图G中的internal id
+                // pruning candidateset --> internal id of merged G
                 while (!local_temp_candidates.empty()) {
                     auto candidate = local_temp_candidates.top();
                     local_temp_candidates.pop();
@@ -2374,7 +2294,7 @@ class MergeHierarchicalNSW : public HierarchicalNSW<dist_t> {
                 }
                 tableint local_merged_internal_id = local_search_id + globalid_offset[G1_id];
 
-                // top_candidates中加入原本邻居
+                // top_candidates <-- original neighbors
                 linklistsizeint* local_cur_element_data = get_linklist0(local_merged_internal_id);
                 unsigned short int local_neighbor_count = getListCount(local_cur_element_data);
                 for (unsigned k = 0; k < local_neighbor_count; ++k)
@@ -2383,7 +2303,7 @@ class MergeHierarchicalNSW : public HierarchicalNSW<dist_t> {
                     local_top_candidates.push({fstdistfunc_(local_merge_data, getDataByInternalId(neighbor_internalid), dist_func_param_), neighbor_internalid});
                 }
 
-                std::vector<tableint> local_selectedNeighbors = Pruning_InterInsert(local_merge_data, local_merged_internal_id, local_top_candidates, 0); // 更新merged_internal_id的邻居并添加反向边
+                std::vector<tableint> local_selectedNeighbors = Pruning_InterInsert(local_merge_data, local_merged_internal_id, local_top_candidates, 0); // updata local_merged_internal_id's neighborhood and adding reverse edges
 
                 if (et)
                 {

@@ -98,8 +98,8 @@ for db in "${datasets[@]}"; do
         sub_M=30
         PARAMS=(
 #                "60 10 3"
-#                "60 20 3"
-                "60 40 3"
+                "60 30 3"
+                #"60 40 3"
               )
     elif [ "$db" == "msmarc10m" ]; then
           ef=50
@@ -119,20 +119,20 @@ for db in "${datasets[@]}"; do
           sub_M=30
           PARAMS=(
     #              "60 10 3"
-                  #"60 20 3"
-                  "60 40 3"
+                  "60 20 3"
+                  #"60 40 3"
                 )
     else
       echo "Unknown dataset: $db"
       exit 1
     fi
   for m in "${ms[@]}"; do
-    EXECUTABLE="/home/jlc/hnsw-merge/cmake-build-debug/test_hnsw_search"
-    DATA_FILE="/mnt/ssd/merge_bench/${db}/random/multi-index-data/${m}parts/${db}_random_base.fvecs"
-    QUERY_FILE="/mnt/ssd/merge_bench/${db}/${db}_query.fvecs"
-    GT_FILE="/mnt/ssd/merge_bench/${db}/random/multi-index-data/${m}parts/${db}_random_groundtruth.ivecs"
-    OUTPUT_PATH="/home/jlc/hnsw-merge/performance/${db}/${m}parts"
-    MERGED_NSG_PATH="/mnt/ssd/merge_bench/${db}/random/multi-index-merged/${m}parts/${db}_random_RGTM"
+    EXECUTABLE="${REPO_PATH}/cmake-build-debug/test_hnsw_search"
+    DATA_FILE="${DATA_PATH}/${db}/random/multi-index-data/${m}parts/${db}_random_base.fvecs"
+    QUERY_FILE="${DATA_PATH}/${db}/${db}_query.fvecs"
+    GT_FILE="${DATA_PATH}/${db}/random/multi-index-data/${m}parts/${db}_random_groundtruth.ivecs"
+    OUTPUT_PATH="${REPO_PATH}/performance/${db}/${m}parts"
+    MERGED_NSG_PATH="${DATA_PATH}/${db}/random/multi-index-merged/${m}parts/${db}_random_RGTM"
 
     # Fixed parameters for the search
     K=10          # Number of nearest neighbors to retrieve
@@ -155,9 +155,9 @@ for db in "${datasets[@]}"; do
       $EXECUTABLE $DATA_FILE $QUERY_FILE $GT_FILE $GRAPH_INDEX_FILE $K $MIN_EF $MAX_EF $STEPSIZE $PERFORMANCE_CSV
     done
 
-    NGM_GRAPH_INDEX_FILE="/mnt/ssd/merge_bench/${db}/random/multi-index-merged/${m}parts/${db}_random_NGM_pairwise_ef${ef}_M${M}.hnsw"
+    NGM_GRAPH_INDEX_FILE="${DATA_PATH}/${db}/random/multi-index-merged/${m}parts/${db}_random_NGM_pairwise_ef${ef}_M${M}.hnsw"
     NGM_PERFORMANCE_CSV="${OUTPUT_PATH}/${db}_random_NGM_pairwise_ef${ef}_M${M}_K${K}.csv"
-    $EXECUTABLE $DATA_FILE $QUERY_FILE $GT_FILE $NGM_GRAPH_INDEX_FILE $K $MIN_EF $MAX_EF $STEPSIZE $NGM_PERFORMANCE_CSV
+    #$EXECUTABLE $DATA_FILE $QUERY_FILE $GT_FILE $NGM_GRAPH_INDEX_FILE $K $MIN_EF $MAX_EF $STEPSIZE $NGM_PERFORMANCE_CSV
   done
 done
 

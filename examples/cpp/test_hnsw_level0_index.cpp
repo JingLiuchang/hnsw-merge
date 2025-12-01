@@ -28,7 +28,7 @@ inline void ParallelFor(size_t start, size_t end, size_t numThreads, Function fn
         std::mutex lastExceptMutex;
 
         for (size_t threadId = 0; threadId < numThreads; ++threadId) {
-            threads.push_back(std::thread([&, threadId] { // 创造该线程后，该线程自己执行下面的内容，而上面的循环开始创造下一个线程，主线程只负责创建线程，并将线程对象存储到 threads 容器中
+            threads.push_back(std::thread([&, threadId] {
                 while (true) {
                     size_t id = current.fetch_add(1);
 
@@ -54,7 +54,7 @@ inline void ParallelFor(size_t start, size_t end, size_t numThreads, Function fn
             }));
         }
         for (auto &thread : threads) {
-            thread.join(); // 让主线程（或调用 join() 的线程）阻塞，直到被 join() 的线程完成运行
+            thread.join();
         }
         if (lastException) {
             std::rethrow_exception(lastException);
@@ -86,7 +86,7 @@ int main(int argc, char** argv) {
 
     auto s = std::chrono::high_resolution_clock::now();
     ParallelFor(0, max_elements, num_threads, [&](size_t row, size_t threadId) {
-        alg_hnsw->addPoint_level0_only((void*)(data + dim * row), row); // fn(row, threadId)在threadId号线程中执行alg_hnsw->addPoint, row: partition id
+        alg_hnsw->addPoint_level0_only((void*)(data + dim * row), row);
     });
     auto e = std::chrono::high_resolution_clock::now();
 

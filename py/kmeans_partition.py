@@ -21,16 +21,16 @@ if __name__ == "__main__":
         print('Error: num_clusters must be at least 2.')
         exit(1)
     elif num_clusters == 2:
-        data_path = f'/home/jlc/hnswlib/data/{db}/{db}_base.fvecs'
-        kmeans_centroids_save_path = f'/home/jlc/hnswlib/data/{db}/kmeans/bi-index-data/{db}_kmeans_centroids.fvecs'
-        partition_save_path = f'/home/jlc/hnswlib/data/{db}/kmeans/bi-index-data/'
-        base_save_path = f'/home/jlc/hnswlib/data/{db}/kmeans/bi-index-data/{db}_kmeans_base.fvecs'
+        data_path = f'/mnt/ssd/merge_bench/{db}/{db}_base.fvecs'
+        kmeans_centroids_save_path = f'/mnt/ssd/merge_bench/{db}/kmeans/bi-index-data/{db}_kmeans_centroids.fvecs'
+        partition_save_path = f'/mnt/ssd/merge_bench/{db}/kmeans/bi-index-data/'
+        base_save_path = f'/mnt/ssd/merge_bench/{db}/kmeans/bi-index-data/{db}_kmeans_base.fvecs'
     else:
-        data_path = f'/home/jlc/hnswlib/data/{db}/{db}_base.fvecs'
-        kmeans_centroids_save_path = f'/home/jlc/hnswlib/data/{db}/kmeans/multi-index-data/{num_clusters}parts/{db}_kmeans_centroids.fvecs'
-        partition_save_path = f'/home/jlc/hnswlib/data/{db}/kmeans/multi-index-data/{num_clusters}parts/'
-        partition_index_path = f'/home/jlc/hnswlib/data/{db}/kmeans/multi-index-merged/{num_clusters}parts/'
-        base_save_path = f'/home/jlc/hnswlib/data/{db}/kmeans/multi-index-data/{num_clusters}parts/{db}_kmeans_base.fvecs'
+        data_path = f'/mnt/ssd/merge_bench/{db}/{db}_base.fvecs'
+        kmeans_centroids_save_path = f'/mnt/ssd/merge_bench/{db}/kmeans/multi-index-data/{num_clusters}parts/{db}_kmeans_centroids.fvecs'
+        partition_save_path = f'/mnt/ssd/merge_bench/{db}/kmeans/multi-index-data/{num_clusters}parts/'
+        partition_index_path = f'/mnt/ssd/merge_bench/{db}/kmeans/multi-index-merged/{num_clusters}parts/'
+        base_save_path = f'/mnt/ssd/merge_bench/{db}/kmeans/multi-index-data/{num_clusters}parts/{db}_kmeans_base.fvecs'
         os.makedirs(os.path.dirname(partition_save_path), exist_ok=True)
         os.makedirs(os.path.dirname(partition_index_path), exist_ok=True)
 
@@ -64,7 +64,7 @@ if __name__ == "__main__":
         # Get all data points belonging to cluster i
         cluster_data = data[assignments == i]
 
-        # Save cluster data to f'/home/jlc/hnswlib/data/{db}/kmeans/bi-index-data/{db}_kmeansP{i+1}_base.fvecs'
+        # Save cluster data to f'/mnt/ssd/merge_bench/{db}/kmeans/bi-index-data/{db}_kmeansP{i+1}_base.fvecs'
         cluster_save_path = f'{partition_save_path}{db}_kmeansP{i+1}_base.fvecs'
         utils.fvecs_write(cluster_save_path, cluster_data)
 

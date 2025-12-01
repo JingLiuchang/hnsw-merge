@@ -340,12 +340,12 @@ class HierarchicalNSW : public AlgorithmInterface<dist_t> {
         visited_array[ep_id] = visited_array_tag;
 
         while (!candidate_set.empty()) {
-            std::pair<dist_t, tableint> current_node_pair = candidate_set.top(); // 当前最近点
+            std::pair<dist_t, tableint> current_node_pair = candidate_set.top(); // current nearest node
             dist_t candidate_dist = -current_node_pair.first;
 
             bool flag_stop_search;
             if (bare_bone_search) {
-                flag_stop_search = candidate_dist > lowerBound; // 最近点距离大于当前下界，停止搜索
+                flag_stop_search = candidate_dist > lowerBound; // terminate searching
             } else {
                 if (stop_condition) {
                     flag_stop_search = stop_condition->should_stop_search(candidate_dist, lowerBound);
@@ -356,7 +356,7 @@ class HierarchicalNSW : public AlgorithmInterface<dist_t> {
             if (flag_stop_search) {
                 break;
             }
-            candidate_set.pop(); // 若继续搜索，弹出当前最近点
+            candidate_set.pop(); // popping current nearest node
 
             tableint current_node_id = current_node_pair.second;
             int *data = (int *) get_linklist0(current_node_id);
@@ -374,7 +374,7 @@ class HierarchicalNSW : public AlgorithmInterface<dist_t> {
             _mm_prefetch((char *) (data + 2), _MM_HINT_T0);
 #endif
 
-            for (size_t j = 1; j <= size; j++) { // 遍历当前节点的所有邻居
+            for (size_t j = 1; j <= size; j++) { // expanding neighborhood
                 int candidate_id = *(data + j);
 //                    if (candidate_id == 0) continue;
 #ifdef USE_SSE
@@ -382,7 +382,7 @@ class HierarchicalNSW : public AlgorithmInterface<dist_t> {
                 _mm_prefetch(data_level0_memory_ + (*(data + j + 1)) * size_data_per_element_ + offsetData_,
                                 _MM_HINT_T0);  ////////////
 #endif
-                if (!(visited_array[candidate_id] == visited_array_tag)) { // 该邻居未访问过
+                if (!(visited_array[candidate_id] == visited_array_tag)) { // unvisited neighbor founded
                     visited_array[candidate_id] = visited_array_tag;
 
                     char *currObj1 = (getDataByInternalId(candidate_id));
@@ -392,7 +392,7 @@ class HierarchicalNSW : public AlgorithmInterface<dist_t> {
                     if (!bare_bone_search && stop_condition) {
                         flag_consider_candidate = stop_condition->should_consider_candidate(dist, lowerBound);
                     } else {
-                        flag_consider_candidate = top_candidates.size() < ef || lowerBound > dist; // 距离小于下界，或者top_candidates未满都考虑插入此点
+                        flag_consider_candidate = top_candidates.size() < ef || lowerBound > dist; // top_candidates not full or distance < lowerBound, insert in to candidates
                     }
 
                     if (flag_consider_candidate) {
@@ -457,10 +457,10 @@ class HierarchicalNSW : public AlgorithmInterface<dist_t> {
 
         dist_t lowerBound = std::numeric_limits<dist_t>::max();
 
-        // 初始化所有入口点
+        // init the given entry points
         for (tableint ep_id : entry_points) {
             if (visited_array[ep_id] == visited_array_tag) {
-                continue;  // 跳过重复的入口点
+                continue;
             }
 
             if (bare_bone_search ||
@@ -481,7 +481,6 @@ class HierarchicalNSW : public AlgorithmInterface<dist_t> {
             visited_array[ep_id] = visited_array_tag;
         }
 
-        // 确保top_candidates不超过ef
         while (top_candidates.size() > ef) {
             if (!bare_bone_search && stop_condition) {
                 tableint id = top_candidates.top().second;
@@ -491,11 +490,11 @@ class HierarchicalNSW : public AlgorithmInterface<dist_t> {
             top_candidates.pop();
         }
 
-        // 如果没有有效的入口点，设置默认下界
+        // setting initial lower bound
         if (top_candidates.empty()) {
             lowerBound = std::numeric_limits<dist_t>::max();
         } else {
-            lowerBound = top_candidates.top().first;  // 最远的有效点作为初始下界
+            lowerBound = top_candidates.top().first;
         }
 
         while (!candidate_set.empty()) {

@@ -31,7 +31,7 @@ inline void ParallelFor(size_t start, size_t end, size_t numThreads, Function fn
         std::mutex lastExceptMutex;
 
         for (size_t threadId = 0; threadId < numThreads; ++threadId) {
-            threads.push_back(std::thread([&, threadId] { // 创造该线程后，该线程自己执行下面的内容，而上面的循环开始创造下一个线程，主线程只负责创建线程，并将线程对象存储到 threads 容器中
+            threads.push_back(std::thread([&, threadId] {
                 while (true) {
                     size_t id = current.fetch_add(1);
 
@@ -57,7 +57,7 @@ inline void ParallelFor(size_t start, size_t end, size_t numThreads, Function fn
             }));
         }
         for (auto &thread : threads) {
-            thread.join(); // 让主线程（或调用 join() 的线程）阻塞，直到被 join() 的线程完成运行
+            thread.join();
         }
         if (lastException) {
             std::rethrow_exception(lastException);
@@ -181,7 +181,7 @@ int main(int argc, char** argv) {
     }
 
     float* data = NULL;
-    int max_elements, dim;
+    size_t max_elements, dim;
     load_data(argv[1], data, max_elements, dim);
     int ef_construction = atoi(argv[2]);
     int M = atoi(argv[3]);
@@ -196,7 +196,7 @@ int main(int argc, char** argv) {
     std::string global2local_file = subdata_file + "_global2local_kbase2.bin";
 
     float* centroid_data = NULL;
-    int centroid_num, centroid_dim;
+    size_t centroid_num, centroid_dim;
     load_data(const_cast<char*>(centroid_file.c_str()), centroid_data, centroid_num, centroid_dim);
 
     std::vector<std::pair<hnswlib::labeltype, unsigned>> assignments;
@@ -210,7 +210,7 @@ int main(int argc, char** argv) {
     params.Set<bool>("print", true);
     params.Set<unsigned>("kbase", kbase);
 
-    int num_threads = 72;       // Number of threads for operations with index
+    int num_threads = 118;       // Number of threads for operations with index
     omp_set_num_threads(num_threads);
     double time_cost = 0.0;
 
@@ -222,6 +222,7 @@ int main(int argc, char** argv) {
     for (unsigned i = 0; i < graph_num; i++)
     {
         // std::string index_file = subgraph_index_file + std::to_string(i+1) + "_ef" + std::to_string(ef_construction) + "_M" + std::to_string(M) + ".hnsw";
+        std::cout << "Building sub-graph " << i + 1 << "/" << graph_num << " ...";
 
         std::string data_file = subdata_file + "_centroid_" + std::to_string(i+1) + ".fvecs";
         float* subdata;
@@ -232,10 +233,11 @@ int main(int argc, char** argv) {
 
         auto s = std::chrono::high_resolution_clock::now();
         ParallelFor(0, sub_max_elements, num_threads, [&](size_t row, size_t threadId) {
-            hnsw->addPoint((void*)(subdata + sub_dim * row), row); // fn(row, threadId)在threadId号线程中执行alg_hnsw->addPoint, row: partition id
+            hnsw->addPoint((void*)(subdata + sub_dim * row), row);
         });
         auto e = std::chrono::high_resolution_clock::now();
         time_cost += std::chrono::duration<double>(e - s).count();
+        std::cout << " Done. Time cost: " << std::chrono::duration<double>(e - s).count() << " s" << std::endl;
 
         graphs[i] = hnsw;
     }
@@ -259,17 +261,3 @@ int main(int argc, char** argv) {
     delete alg_hnsw;
     return 0;
 }
-
-// int main()
-// {
-//     std::string idmap_file = "/home/jlc/hnswlib/data/sift/overlap/multi-index-data/5parts/sift_idmaps_k2.bin";
-//     std::string assignment_file = "/home/jlc/hnswlib/data/sift/overlap/multi-index-data/5parts/sift_kbase2_assignments.bin";
-//
-//     std::vector<std::pair<int, int>> assignments;
-//     std::vector<std::vector<int>> idmaps;
-//
-//     read_assignments(assignment_file, assignments);
-//     read_idmaps(idmap_file, idmaps);
-//
-//     return 0;
-// }

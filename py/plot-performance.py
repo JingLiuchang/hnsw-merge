@@ -9,9 +9,9 @@ import re
 import os
 
 # datasets = ['anton10m', 'imagenet10m', 'deep10m', 'msmarc10m']
-datasets = ['deep100M']
-methods = ['random']
-merge_m = [50]
+datasets = ['deep10m']
+methods = ['kmeans']
+merge_m = [20]
 et = 0
 
 if __name__=="__main__":
@@ -33,7 +33,7 @@ if __name__=="__main__":
 
                 line_names = []
                 for file in csv_files:
-                    filename = os.path.basename(file)  # 获取文件名
+                    filename = os.path.basename(file)
                     match = re.search(fr'{db}_{method}_(.+)\.csv', filename)
                     if match:
                         line_names.append(match.group(1))
@@ -52,13 +52,12 @@ if __name__=="__main__":
                     try:
                         with open(file_path, 'r') as f:
                             reader = csv.reader(f)
-                            next(reader)  # 跳过表头（如果有的话）
+                            next(reader)
                             for row in reader:
                                 L, recall, latency = map(float, row)
                                 recalls.append(recall)
                                 latencies.append(latency)
 
-                        # 按照recall值排序，确保图像平滑
                         sorted_data = sorted(zip(recalls, latencies))
                         recalls = [data[0] for data in sorted_data]
                         latencies = [data[1] for data in sorted_data]
@@ -72,9 +71,6 @@ if __name__=="__main__":
                 plt.title('Recall vs QPS for Different Algorithms')
                 plt.grid(True, linestyle='--', alpha=0.7)
                 plt.legend()
-
-                # 可选：对y轴使用对数刻度，因为延迟可能有很大差异
-                # plt.yscale('log', base=2)
 
                 if not exists(output):
                     os.makedirs(output)
