@@ -31,8 +31,8 @@ class HierarchicalNSW : public AlgorithmInterface<dist_t> {
     size_t ef_construction_{0};
     size_t ef_{0};
 
-    double mult_{0.0}, revSize_{0.0}; // 没用
-    int maxlevel_{0}; // 图索引当前的最大层数
+    double mult_{0.0}, revSize_{0.0};
+    int maxlevel_{0};
 
     std::unique_ptr<VisitedListPool> visited_list_pool_{nullptr};
 
@@ -93,9 +93,9 @@ class HierarchicalNSW : public AlgorithmInterface<dist_t> {
         size_t ef_construction = 200,
         size_t random_seed = 100,
         bool allow_replace_deleted = false)
-        : label_op_locks_(MAX_LABEL_OPERATION_LOCKS), // label: data + dim * label, 最多并行MAX_LABEL_OPERATION_LOCKS
-            link_list_locks_(max_elements), // 每个向量都有一个，用于更新自己的邻居表。不仅作用于新增向量本身，而且作用于涉及的邻居节点。(反向边时)
-            element_levels_(max_elements), // 每个向量的最高层layer id, 索引是内部id
+        : label_op_locks_(MAX_LABEL_OPERATION_LOCKS),
+            link_list_locks_(max_elements),
+            element_levels_(max_elements),
             allow_replace_deleted_(allow_replace_deleted) {
         max_elements_ = max_elements;
         num_deleted_ = 0;
@@ -110,37 +110,37 @@ class HierarchicalNSW : public AlgorithmInterface<dist_t> {
             M_ = 10000;
         }
         maxM_ = M_;
-        maxM0_ = M_ * 2; // 最底层
+        maxM0_ = M_ * 2;
         ef_construction_ = std::max(ef_construction, M_);
         ef_ = 10;
 
         level_generator_.seed(random_seed);
         update_probability_generator_.seed(random_seed + 1);
 
-        size_links_level0_ = maxM0_ * sizeof(tableint) + sizeof(linklistsizeint); // 邻居id数组+邻居数量(第0层)
-        size_data_per_element_ = size_links_level0_ + data_size_ + sizeof(labeltype); // 邻居id数组+邻居数量+向量数据+label: 图中的一条完整数据的大小(第0层)
+        size_links_level0_ = maxM0_ * sizeof(tableint) + sizeof(linklistsizeint);
+        size_data_per_element_ = size_links_level0_ + data_size_ + sizeof(labeltype);
         offsetData_ = size_links_level0_;
         label_offset_ = size_links_level0_ + data_size_;
         offsetLevel0_ = 0;
 
-        data_level0_memory_ = (char *) malloc(max_elements_ * size_data_per_element_); // 分配最大占用内存(第0层)
+        data_level0_memory_ = (char *) malloc(max_elements_ * size_data_per_element_);
         if (data_level0_memory_ == nullptr)
             throw std::runtime_error("Not enough memory");
 
-        cur_element_count = 0; // 已插入点数目
+        cur_element_count = 0;
 
-        visited_list_pool_ = std::unique_ptr<VisitedListPool>(new VisitedListPool(1, max_elements)); // 图操作经常需要判断哪些节点已经走过，这里提供一个已经申请好空间的池子，减少内存频繁申请释放的开销
+        visited_list_pool_ = std::unique_ptr<VisitedListPool>(new VisitedListPool(1, max_elements));
 
         // initializations for special treatment of the first node
-        enterpoint_node_ = -1; // 内部id
+        enterpoint_node_ = -1;
         maxlevel_ = -1;
 
         linkLists_ = (char **) malloc(sizeof(void *) * max_elements_);
         if (linkLists_ == nullptr)
             throw std::runtime_error("Not enough memory: HierarchicalNSW failed to allocate linklists");
-        size_links_per_element_ = maxM_ * sizeof(tableint) + sizeof(linklistsizeint); // 邻居id数组+邻居数量(非0层), linklist中一个元素的大小, 其中linklistsizeint(unsigned int 4B)中的前unsigned short int(2B)是邻居数量，其他位置和增删有关
+        size_links_per_element_ = maxM_ * sizeof(tableint) + sizeof(linklistsizeint);
         mult_ = 1 / log(1.0 * M_);
-        revSize_ = 1.0 / mult_; // 没用
+        revSize_ = 1.0 / mult_;
     }
 
 
@@ -177,7 +177,7 @@ class HierarchicalNSW : public AlgorithmInterface<dist_t> {
 
     inline std::mutex& getLabelOpMutex(labeltype label) const {
         // calculate hash
-        size_t lock_id = label & (MAX_LABEL_OPERATION_LOCKS - 1); // 最多并发MAX_LABEL_OPERATION_LOCKS - 1
+        size_t lock_id = label & (MAX_LABEL_OPERATION_LOCKS - 1);
         return label_op_locks_[lock_id];
     }
 
@@ -627,12 +627,12 @@ class HierarchicalNSW : public AlgorithmInterface<dist_t> {
         visited_array[ep_id] = visited_array_tag;
 
         while (!candidate_set.empty()) {
-            std::pair<dist_t, tableint> current_node_pair = candidate_set.top(); // 当前最近点
+            std::pair<dist_t, tableint> current_node_pair = candidate_set.top();
             dist_t candidate_dist = -current_node_pair.first;
 
             bool flag_stop_search;
             if (bare_bone_search) {
-                flag_stop_search = candidate_dist > lowerBound; // 最近点距离大于当前下界，停止搜索
+                flag_stop_search = candidate_dist > lowerBound;
             } else {
                 if (stop_condition) {
                     flag_stop_search = stop_condition->should_stop_search(candidate_dist, lowerBound);
@@ -643,7 +643,7 @@ class HierarchicalNSW : public AlgorithmInterface<dist_t> {
             if (flag_stop_search) {
                 break;
             }
-            candidate_set.pop(); // 若继续搜索，弹出当前最近点
+            candidate_set.pop();
 
             tableint current_node_id = current_node_pair.second;
             int *data = (int *) get_linklist0(current_node_id);
@@ -661,7 +661,7 @@ class HierarchicalNSW : public AlgorithmInterface<dist_t> {
             _mm_prefetch((char *) (data + 2), _MM_HINT_T0);
 #endif
 
-            for (size_t j = 1; j <= size; j++) { // 遍历当前节点的所有邻居
+            for (size_t j = 1; j <= size; j++) {
                 int candidate_id = *(data + j);
 //                    if (candidate_id == 0) continue;
 #ifdef USE_SSE
@@ -669,7 +669,7 @@ class HierarchicalNSW : public AlgorithmInterface<dist_t> {
                 _mm_prefetch(data_level0_memory_ + (*(data + j + 1)) * size_data_per_element_ + offsetData_,
                                 _MM_HINT_T0);  ////////////
 #endif
-                if (!(visited_array[candidate_id] == visited_array_tag)) { // 该邻居未访问过
+                if (!(visited_array[candidate_id] == visited_array_tag)) {
                     visited_array[candidate_id] = visited_array_tag;
 
                     char *currObj1 = (getDataByInternalId(candidate_id));
@@ -679,7 +679,7 @@ class HierarchicalNSW : public AlgorithmInterface<dist_t> {
                     if (!bare_bone_search && stop_condition) {
                         flag_consider_candidate = stop_condition->should_consider_candidate(dist, lowerBound);
                     } else {
-                        flag_consider_candidate = top_candidates.size() < ef || lowerBound > dist; // 距离小于下界，或者top_candidates未满都考虑插入此点
+                        flag_consider_candidate = top_candidates.size() < ef || lowerBound > dist;
                     }
 
                     if (flag_consider_candidate) {
@@ -780,7 +780,7 @@ class HierarchicalNSW : public AlgorithmInterface<dist_t> {
 
 
     linklistsizeint *get_linklist(tableint internal_id, int level) const {
-        return (linklistsizeint *) (linkLists_[internal_id] + (level - 1) * size_links_per_element_); // level - 1 是因为linklist只存储了非0层
+        return (linklistsizeint *) (linkLists_[internal_id] + (level - 1) * size_links_per_element_);
     }
 
 
@@ -795,7 +795,7 @@ class HierarchicalNSW : public AlgorithmInterface<dist_t> {
         std::priority_queue<std::pair<dist_t, tableint>, std::vector<std::pair<dist_t, tableint>>, CompareByFirst> &top_candidates,
         int level,
         bool isUpdate) {
-        size_t Mcurmax = level ? maxM_ : maxM0_; // 当前层的M
+        size_t Mcurmax = level ? maxM_ : maxM0_;
         getNeighborsByHeuristic2(top_candidates, M_);//pruning
         if (top_candidates.size() > M_)
             throw std::runtime_error("Should be not be more than M_ candidates returned by the heuristic");
@@ -809,7 +809,7 @@ class HierarchicalNSW : public AlgorithmInterface<dist_t> {
 
         tableint next_closest_entry_point = selectedNeighbors.back();
 
-        {// 更新 new element 的邻居表
+        {
             // lock only during the update
             // because during the addition the lock for cur_c is already acquired
             std::unique_lock <std::mutex> lock(link_list_locks_[cur_c], std::defer_lock);
@@ -826,10 +826,10 @@ class HierarchicalNSW : public AlgorithmInterface<dist_t> {
                 throw std::runtime_error("The newly inserted element should have blank link list");
             }
             setListCount(ll_cur, selectedNeighbors.size());
-            tableint *data = (tableint *) (ll_cur + 1); // linklist指针
+            tableint *data = (tableint *) (ll_cur + 1);
             for (size_t idx = 0; idx < selectedNeighbors.size(); idx++) {
                 if (data[idx] && !isUpdate)
-                    throw std::runtime_error("Possible memory corruption"); // 非空的linklist
+                    throw std::runtime_error("Possible memory corruption");
                 if (level > element_levels_[selectedNeighbors[idx]])
                     throw std::runtime_error("Trying to make a link on a non-existent level");
 
@@ -837,7 +837,6 @@ class HierarchicalNSW : public AlgorithmInterface<dist_t> {
             }
         }
 
-        // 加反向边
         for (size_t idx = 0; idx < selectedNeighbors.size(); idx++) {
             std::unique_lock <std::mutex> lock(link_list_locks_[selectedNeighbors[idx]]);
 
@@ -1225,7 +1224,7 @@ class HierarchicalNSW : public AlgorithmInterface<dist_t> {
 
 
     unsigned short int getListCount(linklistsizeint * ptr) const {
-        return *((unsigned short int *)ptr); // 实际的邻居数目是一个unsigned short int类型
+        return *((unsigned short int *)ptr);
     }
 
 
@@ -1241,17 +1240,16 @@ class HierarchicalNSW : public AlgorithmInterface<dist_t> {
     void addPoint(const void *data_point, labeltype label, bool replace_deleted = false) {
         if ((allow_replace_deleted_ == false) && (replace_deleted == true)) {
             throw std::runtime_error("Replacement of deleted elements is disabled in constructor");
-        } // 增删相关
+        }
 
         // lock all operations with element by label
-        std::unique_lock <std::mutex> lock_label(getLabelOpMutex(label)); // 最多并发MAX_LABEL_OPERATION_LOCKS - 1个label
+        std::unique_lock <std::mutex> lock_label(getLabelOpMutex(label));
         if (!replace_deleted) {
             addPoint(data_point, label, -1);
             return;
         }
 
 
-        // 以下均与增删有关, 略
         // check if there is vacant place
         tableint internal_id_replaced;
         std::unique_lock <std::mutex> lock_deleted_elements(deleted_elements_lock);
@@ -1263,10 +1261,10 @@ class HierarchicalNSW : public AlgorithmInterface<dist_t> {
         lock_deleted_elements.unlock();
 
         // if there is no vacant place then add or update point
-        // else add point to vacant place  (删除后空缺的位置)
-        if (!is_vacant_place) { // 没有删除后空缺的位置
+        // else add point to vacant place
+        if (!is_vacant_place) {
             addPoint(data_point, label, -1);
-        } else { // 有删除后空缺的位置
+        } else {
             // we assume that there are no concurrent operations on deleted element
             labeltype label_replaced = getExternalLabel(internal_id_replaced);
             setExternalLabel(internal_id_replaced, label);
@@ -1283,7 +1281,7 @@ class HierarchicalNSW : public AlgorithmInterface<dist_t> {
 
     void addPoint_level0_only(const void *data_point, labeltype label) {
         // lock all operations with element by label
-        std::unique_lock <std::mutex> lock_label(getLabelOpMutex(label)); // 最多并发MAX_LABEL_OPERATION_LOCKS - 1个label
+        std::unique_lock <std::mutex> lock_label(getLabelOpMutex(label));
         addPoint(data_point, label, 0);
         return;
 
@@ -1303,8 +1301,8 @@ class HierarchicalNSW : public AlgorithmInterface<dist_t> {
         int elemLevel = element_levels_[internalId];
         std::uniform_real_distribution<float> distribution(0.0, 1.0);
         for (int layer = 0; layer <= elemLevel; layer++) {
-            std::unordered_set<tableint> sCand; // 全部1-hop和概率部分2-hop
-            std::unordered_set<tableint> sNeigh; // 概率部分1-hop
+            std::unordered_set<tableint> sCand;
+            std::unordered_set<tableint> sNeigh;
             std::vector<tableint> listOneHop = getConnectionsWithLock(internalId, layer);
             if (listOneHop.size() == 0)
                 continue;
@@ -1449,7 +1447,7 @@ class HierarchicalNSW : public AlgorithmInterface<dist_t> {
 
 
     tableint addPoint(const void *data_point, labeltype label, int level) {
-        tableint cur_c = 0; // 内部id
+        tableint cur_c = 0;
         {
             // Checking if the element with the same label already exists
             // if so, updating it *instead* of creating a new element.
@@ -1481,50 +1479,49 @@ class HierarchicalNSW : public AlgorithmInterface<dist_t> {
             label_lookup_[label] = cur_c;
         }
 
-        // 对于新插入的点:
 
-        std::unique_lock <std::mutex> lock_el(link_list_locks_[cur_c]); // link_list_locks_[cur_c] 表示要锁定的互斥锁, 每个点一把锁, 只能锁住自己的
+        std::unique_lock <std::mutex> lock_el(link_list_locks_[cur_c]);
         int curlevel = getRandomLevel(mult_);
-        if (level > 0) // 若有指定level
+        if (level > 0)
             curlevel = level;
 
-        element_levels_[cur_c] = curlevel; // 记录cur_c的最高level
+        element_levels_[cur_c] = curlevel;
 
-        std::unique_lock <std::mutex> templock(global); // 只有global这一把锁, 保证只有一个线程可以更改maxlevel
+        std::unique_lock <std::mutex> templock(global);
         int maxlevelcopy = maxlevel_;
         if (curlevel <= maxlevelcopy)
-            templock.unlock(); // 及时释放, maxlevelcopy记录当前观察到的maxlevel, 若大于maxlevel为啥不在这里更新后立即释放, 这里不释放是否会阻塞其他线程?
-        tableint currObj = enterpoint_node_; // 没有点时为-1
+            templock.unlock();
+        tableint currObj = enterpoint_node_;
         tableint enterpoint_copy = enterpoint_node_;
 
-        memset(data_level0_memory_ + cur_c * size_data_per_element_ + offsetLevel0_, 0, size_data_per_element_); // 初始化cur_c的一条数据(邻居数、邻居id列表、向量数据、label)
+        memset(data_level0_memory_ + cur_c * size_data_per_element_ + offsetLevel0_, 0, size_data_per_element_);
 
         // Initialisation of the data and label
-        memcpy(getExternalLabeLp(cur_c), &label, sizeof(labeltype)); // label = external id = partition id, 写到cur_c的数据的label位上
-        memcpy(getDataByInternalId(cur_c), data_point, data_size_); // internal id仅代表在level0的图索引内存表示中的行号, 写入cur_c的数据的向量位
+        memcpy(getExternalLabeLp(cur_c), &label, sizeof(labeltype));
+        memcpy(getDataByInternalId(cur_c), data_point, data_size_);
 
-        if (curlevel) { // 非0代表不止存在于level0, linklist中只存储level>0的邻居, 第0层的单独自己存储在data_level0_memory_
-            linkLists_[cur_c] = (char *) malloc(size_links_per_element_ * curlevel + 1); // cur_c有curlevel层, 每层size_links_per_element_字节, 多一个字节存储curlevel?
+        if (curlevel) {
+            linkLists_[cur_c] = (char *) malloc(size_links_per_element_ * curlevel + 1);
             if (linkLists_[cur_c] == nullptr)
                 throw std::runtime_error("Not enough memory: addPoint failed to allocate linklist");
             memset(linkLists_[cur_c], 0, size_links_per_element_ * curlevel + 1);
         }
 
-        if ((signed)currObj != -1) { // 非第一个插入点, 向已有index插入点
-            if (curlevel < maxlevelcopy) { // 非最高层, 先greedy search找到curlevel的入口点
+        if ((signed)currObj != -1) {
+            if (curlevel < maxlevelcopy) {
                 dist_t curdist = fstdistfunc_(data_point, getDataByInternalId(currObj), dist_func_param_);
-                for (int level = maxlevelcopy; level > curlevel; level--) { // 每层 greedy search
+                for (int level = maxlevelcopy; level > curlevel; level--) {
                     bool changed = true;
                     while (changed) {
                         changed = false;
                         unsigned int *data;
                         std::unique_lock <std::mutex> lock(link_list_locks_[currObj]);
-                        data = get_linklist(currObj, level); // data 是 currObj在level层的邻居列表
-                        int size = getListCount(data); // 邻居数目
+                        data = get_linklist(currObj, level);
+                        int size = getListCount(data);
 
-                        tableint *datal = (tableint *) (data + 1); // +1是跳过开头4B的linklistsizeint, 这里面是邻居数目和增删指示位, linklistsizeint = tableint = unsigned int
+                        tableint *datal = (tableint *) (data + 1);
                         for (int i = 0; i < size; i++) {
-                            tableint cand = datal[i]; // cand: 邻居internal id
+                            tableint cand = datal[i];
                             if (cand < 0 || cand > max_elements_)
                                 throw std::runtime_error("cand error");
                             dist_t d = fstdistfunc_(data_point, getDataByInternalId(cand), dist_func_param_);
@@ -1538,7 +1535,6 @@ class HierarchicalNSW : public AlgorithmInterface<dist_t> {
                 }
             }
 
-            // 给以下各层插入这个新点
             bool epDeleted = isMarkedDeleted(enterpoint_copy);
             for (int level = std::min(curlevel, maxlevelcopy); level >= 0; level--) {
                 if (level > maxlevelcopy || level < 0)  // possible?
@@ -1553,15 +1549,14 @@ class HierarchicalNSW : public AlgorithmInterface<dist_t> {
                 }
                 currObj = mutuallyConnectNewElement(data_point, cur_c, top_candidates, level, false); // pruning and connect
             }
-        } else { // 第一个插入点
-            // Do nothing for the first element, 内存表示也已经完成(第一个点就是全0)
+        } else {
             enterpoint_node_ = 0;
             maxlevel_ = curlevel;
         }
 
         // Releasing lock for the maximum level
         if (curlevel > maxlevelcopy) {
-            enterpoint_node_ = cur_c; // ep总是最高层的点
+            enterpoint_node_ = cur_c;
             maxlevel_ = curlevel;
         }
         return cur_c;

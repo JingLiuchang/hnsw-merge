@@ -56,7 +56,6 @@ if(HNSWLIB_EXAMPLES)
       #SET( CMAKE_CXX_FLAGS  "/O2 -DHAVE_CXX0X /W1 /openmp /EHsc" ) # release
     endif()
 
-    # 添加 TBB 支持
     find_package(PkgConfig QUIET)
     if(PkgConfig_FOUND)
         pkg_check_modules(TBB tbb)

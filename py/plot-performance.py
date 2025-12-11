@@ -64,7 +64,7 @@ if __name__=="__main__":
 
                         plt.plot(recalls, latencies, marker='o', linestyle='-', label=line_names[i], color=colors[i])
                     except Exception as e:
-                        print(f"处理文件 {csv_file} 时出错: {e}")
+                        print(f"{csv_file} : {e}")
 
                 plt.xlabel('Recall')
                 plt.ylabel('QPS')

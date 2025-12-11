@@ -207,7 +207,7 @@ class MergeHierarchicalNSW : public HierarchicalNSW<dist_t> {
             M_ = 10000;
         }
         maxM_ = M_;
-        maxM0_ = M_ * 2; // 最底层
+        maxM0_ = M_ * 2;
         ef_construction_ = std::max(ef_construction, M_);
         ef_ = 10;
 
@@ -2320,7 +2320,7 @@ class MergeHierarchicalNSW : public HierarchicalNSW<dist_t> {
         }
     }
 
-    void fxy_merge(unsigned m, std::vector<HierarchicalNSW<dist_t>*> graphs, const Parameters &parameters) // 直接update MergeHierarchicalNSW
+    void fxy_merge(unsigned m, std::vector<HierarchicalNSW<dist_t>*> graphs, const Parameters &parameters)
     {
         std::string method = parameters.Get<std::string>("method");
 
@@ -2336,7 +2336,6 @@ class MergeHierarchicalNSW : public HierarchicalNSW<dist_t> {
             return;
         }
 
-        // 初始化G
         initialize_mergeid_lookup(graphs);
         init_merge_graph_level0(graphs);
 

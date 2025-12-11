@@ -118,9 +118,6 @@ def write_fbin_nocp(filename, vecs):
         f.write(struct.pack('<I', dim))
         vecs.astype('float32',copy=False).tofile(f)
 
-# 示例用法
-# vecs = np.random.rand(10, 3).astype('float32')
-# write_fbin_nocp('output.fbin', vecs)
 
 def write_ibin(filename, vecs):
     """ Write an array of int32 vectors to *.ibin file

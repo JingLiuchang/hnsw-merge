@@ -203,11 +203,6 @@ def write_fbin_nocp(filename, vecs):
         f.write(struct.pack('<I', nvecs))
         f.write(struct.pack('<I', dim))
         vecs.astype('float32',copy=False).tofile(f)
-
-# 示例用法
-# vecs = np.random.rand(10, 3).astype('float32')
-# write_fbin_nocp('output.fbin', vecs)
-
 def write_ibin(filename, vecs):
     """ Write an array of int32 vectors to *.ibin file
     Args:
@@ -240,21 +235,8 @@ def write_ibin_nocp(filename, vecs):
 
 
 def write_u8bin(filename: str, vecs: np.ndarray, ) -> None:
-    """
-    将uint8矩阵保存为SIFT1B BIGANN的bvecs格式。
-
-    Args:
-        matrix (np.ndarray): 要保存的uint8矩阵。
-            可以是numpy数组或嵌套列表。
-        filename (str): 输出文件的名称。
-
-    Raises:
-        ValueError: 如果输入矩阵不是2维或者数据类型不是uint8。
-    """
-
-    # 检查矩阵是否为2维uint8类型
     if vecs.ndim != 2 or vecs.dtype != np.uint8:
-        raise ValueError("输入矩阵必须是2维uint8类型")
+        raise ValueError("must be 2-dim uint8 array")
 
     with open(filename, "wb") as f:
         nvecs, dim = vecs.shape
@@ -266,21 +248,8 @@ def write_u8bin(filename: str, vecs: np.ndarray, ) -> None:
         vecs.astype('uint8').flatten().tofile(f)
 
 def write_u8bin_nocp(filename: str, vecs: np.ndarray, ) -> None:
-    """
-    将uint8矩阵保存为SIFT1B BIGANN的bvecs格式。
-
-    Args:
-        matrix (np.ndarray): 要保存的uint8矩阵。
-            可以是numpy数组或嵌套列表。
-        filename (str): 输出文件的名称。
-
-    Raises:
-        ValueError: 如果输入矩阵不是2维或者数据类型不是uint8。
-    """
-
-    # 检查矩阵是否为2维uint8类型
     if vecs.ndim != 2 or vecs.dtype != np.uint8:
-        raise ValueError("输入矩阵必须是2维uint8类型")
+        raise ValueError("must be 2-dim uint8 array")
 
     with open(filename, "wb") as f:
         nvecs, dim = vecs.shape

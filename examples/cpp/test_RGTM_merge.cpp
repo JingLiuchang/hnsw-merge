@@ -30,7 +30,7 @@ inline void ParallelFor(size_t start, size_t end, size_t numThreads, Function fn
         std::mutex lastExceptMutex;
 
         for (size_t threadId = 0; threadId < numThreads; ++threadId) {
-            threads.push_back(std::thread([&, threadId] { // 创造该线程后，该线程自己执行下面的内容，而上面的循环开始创造下一个线程，主线程只负责创建线程，并将线程对象存储到 threads 容器中
+            threads.push_back(std::thread([&, threadId] {
                 while (true) {
                     size_t id = current.fetch_add(1);
 
@@ -56,7 +56,7 @@ inline void ParallelFor(size_t start, size_t end, size_t numThreads, Function fn
             }));
         }
         for (auto &thread : threads) {
-            thread.join(); // 让主线程（或调用 join() 的线程）阻塞，直到被 join() 的线程完成运行
+            thread.join();
         }
         if (lastException) {
             std::rethrow_exception(lastException);
@@ -136,11 +136,3 @@ int main(int argc, char** argv) {
     delete alg_hnsw;
     return 0;
 }
-
-// L : G = 427136 : 72864 = 5.8621
-// L : G = 427220 : 72780 = 5.87002
-// Merge time: 11.3352 s; deep1M_random_RGTM_et0_ef80_M32.hnsw
-
-// L : G = 427136 : 72864 = 5.8621
-// L : G = 427220 : 72780 = 5.87002
-// Merge time: 15.9331 s; deep1M_random_RGTM_et0_ef80_M32.hnsw

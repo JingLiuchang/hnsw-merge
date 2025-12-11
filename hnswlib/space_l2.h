@@ -207,7 +207,7 @@ L2SqrSIMD4ExtResiduals(const void *pVect1v, const void *pVect2v, const void *qty
 
 class L2Space : public SpaceInterface<float> {
     DISTFUNC<float> fstdistfunc_;
-    size_t data_size_; // 一条向量的size
+    size_t data_size_;
     size_t dim_;
 
  public:

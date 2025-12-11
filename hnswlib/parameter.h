@@ -11,9 +11,9 @@
 namespace hnswlib
 {
     struct reverseNN_info {
-        tableint id;                  // id值
-        unsigned length;            // id的reverseNN树目（即rNNs.size()）
-        std::vector<tableint> rNNs;   // id的对应rNNs的id值
+        tableint id;
+        unsigned length;
+        std::vector<tableint> rNNs;
 
         reverseNN_info() = default;
         reverseNN_info(tableint id)
