@@ -832,7 +832,7 @@
         <mxCell id="RLKQTRUPTg6QMwLO-0Gd-160" parent="1" style="rounded=1;whiteSpace=wrap;html=1;absoluteArcSize=1;arcSize=14;strokeWidth=1;fillColor=default;strokeColor=#36393d;fontSize=18;" value="" vertex="1">
           <mxGeometry height="159" width="259.87" x="561.63" y="642" as="geometry" />
         </mxCell>
-        <mxCell id="RLKQTRUPTg6QMwLO-0Gd-161" parent="1" style="text;html=1;whiteSpace=wrap;strokeColor=none;fillColor=none;align=center;verticalAlign=middle;rounded=0;fontSize=20;" value="&lt;b&gt;&lt;font face=&quot;Times New Roman&quot;&gt;(b) Sliding Merge On Target Index&lt;/font&gt;&lt;/b&gt;" vertex="1">
+        <mxCell id="RLKQTRUPTg6QMwLO-0Gd-161" parent="1" style="text;html=1;whiteSpace=wrap;strokeColor=none;fillColor=none;align=center;verticalAlign=middle;rounded=0;fontSize=20;" value="&lt;b&gt;&lt;font face=&quot;Times New Roman&quot;&gt;(c) Sliding Merge On Target Index&lt;/font&gt;&lt;/b&gt;" vertex="1">
           <mxGeometry height="30" width="315.5" x="858.75" y="941" as="geometry" />
         </mxCell>
         <mxCell id="RLKQTRUPTg6QMwLO-0Gd-162" parent="1" style="ellipse;whiteSpace=wrap;html=1;aspect=fixed;fillColor=none;fontSize=18;fontFamily=Times New Roman;" value="1" vertex="1">
@@ -1469,7 +1469,7 @@
             <mxPoint y="9" as="offset" />
           </mxGeometry>
         </mxCell>
-        <mxCell id="RLKQTRUPTg6QMwLO-0Gd-294" parent="1" style="text;html=1;whiteSpace=wrap;strokeColor=none;fillColor=none;align=center;verticalAlign=middle;rounded=0;fontSize=20;" value="&lt;font face=&quot;Times New Roman&quot;&gt;&lt;b&gt;(b) Greedy Pivots Selection&lt;/b&gt;&lt;/font&gt;" vertex="1">
+        <mxCell id="RLKQTRUPTg6QMwLO-0Gd-294" parent="1" style="text;html=1;whiteSpace=wrap;strokeColor=none;fillColor=none;align=center;verticalAlign=middle;rounded=0;fontSize=20;" value="&lt;font face=&quot;Times New Roman&quot;&gt;&lt;b&gt;(b) Pivots Selection&lt;/b&gt;&lt;/font&gt;" vertex="1">
           <mxGeometry height="30" width="235" x="574.0600000000001" y="941" as="geometry" />
         </mxCell>
         <mxCell id="RLKQTRUPTg6QMwLO-0Gd-295" parent="1" style="shape=partialRectangle;html=1;whiteSpace=wrap;connectable=0;strokeColor=inherit;overflow=hidden;fillColor=none;top=1;left=1;bottom=1;right=1;pointerEvents=1;fontSize=18;fontFamily=Times New Roman;" value="10" vertex="1">
