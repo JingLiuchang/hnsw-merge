@@ -82,7 +82,7 @@ int main(int argc, char** argv) {
 
     // auto dist_gt = read_fvecs(argv[1]);
     std::vector<std::vector<unsigned>> gt = read_ivecs(argv[3]);
-    std::vector<std::vector<float>> dists_gt = read_fvecs("./data/sift/sift_distance.fvecs");
+    // std::vector<std::vector<float>> dists_gt = read_fvecs("./data/sift/sift_distance.fvecs");
 
     std::string graph_index_path = std::string(argv[4]);
     int k = atoi(argv[5]);
@@ -91,7 +91,7 @@ int main(int argc, char** argv) {
     int stepsize = atoi(argv[8]);
     std::string performance_csv = std::string(argv[9]);
 
-    int num_threads = 8;       // Number of threads for operations with index
+    int num_threads = 1;       // Number of threads for operations with index
 
     // Initing index
     hnswlib::L2Space space(query_dim);
@@ -114,6 +114,7 @@ int main(int argc, char** argv) {
     std::cout << "ef " << "Recall@" << k << " " << "QPS " << std::endl;
     for (int ef = min_ef; ef <= max_ef; ef += stepsize) {
         alg_hnsw->setEf(ef);
+        alg_hnsw->resetDistanceComputations();
 
         std::vector<std::vector<hnswlib::labeltype>> neighbors(query_elements);
         auto s = std::chrono::high_resolution_clock::now();
@@ -128,6 +129,9 @@ int main(int argc, char** argv) {
         auto e = std::chrono::high_resolution_clock::now();
         double latency = std::chrono::duration<double>(e - s).count();
         double QPS = query_elements / latency;
+
+        // size_t total_distance_computations = alg_hnsw->getDistanceComputations();
+        // double avg_distance_computations = static_cast<double>(total_distance_computations) / query_elements;
 
         std::vector<double> recalls;
         double recall = compute_recall(neighbors, gt, recalls);

@@ -17,6 +17,7 @@
 #include "parameter.h"
 #include <algorithm>
 #include "utils.h"
+#include <omp.h>
 
 namespace hnswlib {
 typedef unsigned int tableint;
@@ -1743,14 +1744,20 @@ class MergeHierarchicalNSW : public HierarchicalNSW<dist_t> {
         {
             for (auto&& p : merge_order) { // pairwise merge
                 NGM_merge_into_later(graphs, p.first, p.second, ef_construction_, parameters); // first merge into second
-                NGM_merge_into_later(graphs, p.second, p.first, ef_construction_, parameters); // second merge into first
+                // NGM_merge_into_later(graphs, p.second, p.first, ef_construction_, parameters); // second merge into first
             }
         }
         else if (method == "RGTM")
         {
             for (auto&& p : merge_order) { // pairwise merge
                 RGTM_merge_into_later(graphs, p.first, p.second, parameters); // first merge into second
-                RGTM_merge_into_later(graphs, p.second, p.first, parameters); // second merge into first
+                // RGTM_merge_into_later(graphs, p.second, p.first, parameters); // second merge into first
+            }
+        }
+        else if (method == "NSM")
+        {
+            for (auto&& p : merge_order) { // pairwise merge
+                NSM_merge_into_later(graphs, p.first, p.second, parameters); // first merge into second
             }
         }
         else
@@ -2110,7 +2117,7 @@ class MergeHierarchicalNSW : public HierarchicalNSW<dist_t> {
             while (!temp_candidates.empty()) {
                 auto candidate = temp_candidates.top();
                 temp_candidates.pop();
-                starting_ids.push_back(candidate.first);
+                starting_ids.push_back(candidate.second);
                 top_candidates.push({candidate.first, candidate.second + globalid_offset[G2_id]});
             }
             tableint merged_internal_id = global_search_id + globalid_offset[G1_id];
@@ -2173,6 +2180,178 @@ class MergeHierarchicalNSW : public HierarchicalNSW<dist_t> {
             std::cout << "ET early terminate at " << total_hits.load(std::memory_order_relaxed) << " hits." << std::endl;
         }
     }
+
+    void NSM_merge_into_later(std::vector<HierarchicalNSW<dist_t>*> graphs, unsigned G1_id, unsigned G2_id, const Parameters &parameters)
+    {
+        HierarchicalNSW<dist_t>* G1 = graphs[G1_id];
+        HierarchicalNSW<dist_t>* G2 = graphs[G2_id];
+        bool print = parameters.Get<bool>("print");
+
+        unsigned global_ef = ef_construction_;
+        unsigned local_ef = parameters.Get<unsigned>("local_ef");
+        unsigned k_plus = parameters.Get<unsigned>("k_plus");
+
+        // Track covered nodes with atomic operations for thread safety
+        std::vector<std::atomic<uint8_t>> covered(G1->cur_element_count);
+        for (auto& c : covered) c.store(0, std::memory_order_relaxed);
+        std::atomic<size_t> covered_count{0};
+
+        // Track L:G ratio (Local sliding : Global naive search)
+        std::atomic<size_t> G_cnt{0};  // Number of naive searches (pivots)
+        std::atomic<size_t> L_cnt{0};  // Number of local sliding searches (followers)
+
+        if (print) {
+            std::cout << "NSM merge: G" << G1_id << " -> G" << G2_id << std::endl;
+        }
+
+        // Parallel execution: multiple threads can start different pivot chains
+#pragma omp parallel
+        {
+            // Each thread has its own random number generator
+            std::random_device rd;
+            std::mt19937 gen(rd() + omp_get_thread_num());
+
+            while (covered_count.load(std::memory_order_acquire) < G1->cur_element_count) {
+                // Step 1: Atomically select an uncovered pivot using CAS
+                tableint pivot_id = 0;
+                bool found_pivot = false;
+
+                for (tableint i = 0; i < G1->cur_element_count; ++i) {
+                    uint8_t expected = 0;
+                    if (covered[i].compare_exchange_strong(expected, 1, std::memory_order_acq_rel)) {
+                        pivot_id = i;
+                        found_pivot = true;
+                        covered_count.fetch_add(1, std::memory_order_relaxed);
+                        break;
+                    }
+                }
+
+                if (!found_pivot) break;
+
+                // Step 2: Naive search for pivot
+                float* pivot_data = (float*) G1->getDataByInternalId(pivot_id);
+                std::priority_queue<std::pair<dist_t, tableint>, std::vector<std::pair<dist_t, tableint>>, HierarchicalNSW<float>::CompareByFirst>
+                    temp_candidates = G2->Global_merge(pivot_data, global_ef);
+
+                std::priority_queue<std::pair<dist_t, tableint>, std::vector<std::pair<dist_t, tableint>>, CompareByFirst> top_candidates;
+                std::vector<tableint> starting_ids;
+
+                while (!temp_candidates.empty()) {
+                    auto candidate = temp_candidates.top();
+                    temp_candidates.pop();
+                    starting_ids.push_back(candidate.second);
+                    top_candidates.push({candidate.first, candidate.second + globalid_offset[G2_id]});
+                }
+
+                tableint merged_pivot_id = pivot_id + globalid_offset[G1_id];
+
+                // Add original neighbors
+                linklistsizeint* pivot_element_data = get_linklist0(merged_pivot_id);
+                unsigned short int neighbor_count = getListCount(pivot_element_data);
+                for (unsigned k = 0; k < neighbor_count; ++k) {
+                    tableint neighbor_internalid = *((tableint*)(pivot_element_data + 1) + k);
+                    top_candidates.push({fstdistfunc_(pivot_data, getDataByInternalId(neighbor_internalid), dist_func_param_), neighbor_internalid});
+                }
+
+                std::vector<tableint> selectedNeighbors = Pruning_InterInsert(pivot_data, merged_pivot_id, top_candidates, 0);
+
+                // Increment G_cnt for this pivot (naive search)
+                G_cnt.fetch_add(1, std::memory_order_relaxed);
+
+                // Step 3: Sliding chain (serial within each chain due to dependency)
+                tableint current_id = pivot_id;
+                std::vector<tableint> prev_starting_ids = starting_ids;
+
+                while (true) {
+                    // Expand neighbors using Self_search
+                    float* current_data = (float*) G1->getDataByInternalId(current_id);
+                    std::priority_queue<std::pair<dist_t, tableint>, std::vector<std::pair<dist_t, tableint>>, HierarchicalNSW<float>::CompareByFirst>
+                        expanded_candidates = G1->Self_search(current_data, k_plus, current_id);
+
+                    // Find nearest uncovered node and atomically claim it
+                    tableint next_id = G1->cur_element_count;
+                    dist_t min_dist = std::numeric_limits<dist_t>::max();
+                    bool found_next = false;
+
+                    std::vector<std::pair<dist_t, tableint>> expanded_list;
+                    while (!expanded_candidates.empty()) {
+                        auto candidate = expanded_candidates.top();
+                        expanded_candidates.pop();
+                        expanded_list.push_back(candidate);
+                    }
+
+                    // Try to claim the nearest uncovered node using CAS
+                    for (auto& candidate : expanded_list) {
+                        tableint candidate_id = candidate.second;
+                        uint8_t expected = 0;
+                        if (covered[candidate_id].compare_exchange_strong(expected, 1, std::memory_order_acq_rel)) {
+                            next_id = candidate_id;
+                            found_next = true;
+                            covered_count.fetch_add(1, std::memory_order_relaxed);
+                            break;
+                        }
+                    }
+
+                    if (!found_next) {
+                        break;
+                    }
+
+                    // Local sliding search
+                    float* next_data = (float*) G1->getDataByInternalId(next_id);
+                    std::priority_queue<std::pair<dist_t, tableint>, std::vector<std::pair<dist_t, tableint>>, HierarchicalNSW<float>::CompareByFirst>
+                        local_temp_candidates = G2->Local_merge(next_data, local_ef, prev_starting_ids);
+
+                    std::priority_queue<std::pair<dist_t, tableint>, std::vector<std::pair<dist_t, tableint>>, CompareByFirst> local_top_candidates;
+                    std::vector<tableint> new_starting_ids;
+
+                    while (!local_temp_candidates.empty()) {
+                        auto candidate = local_temp_candidates.top();
+                        local_temp_candidates.pop();
+                        new_starting_ids.push_back(candidate.second);
+                        local_top_candidates.push({candidate.first, candidate.second + globalid_offset[G2_id]});
+                    }
+
+                    tableint merged_next_id = next_id + globalid_offset[G1_id];
+
+                    // Add original neighbors
+                    linklistsizeint* next_element_data = get_linklist0(merged_next_id);
+                    unsigned short int next_neighbor_count = getListCount(next_element_data);
+                    for (unsigned k = 0; k < next_neighbor_count; ++k) {
+                        tableint neighbor_internalid = *((tableint*)(next_element_data + 1) + k);
+                        local_top_candidates.push({fstdistfunc_(next_data, getDataByInternalId(neighbor_internalid), dist_func_param_), neighbor_internalid});
+                    }
+
+                    std::vector<tableint> local_selectedNeighbors = Pruning_InterInsert(next_data, merged_next_id, local_top_candidates, 0);
+
+                    // Increment L_cnt for this follower (local sliding search)
+                    L_cnt.fetch_add(1, std::memory_order_relaxed);
+
+                    // Update for next iteration in the chain
+                    current_id = next_id;
+                    prev_starting_ids = new_starting_ids;
+                }
+
+                // Thread-safe progress printing
+                if (print) {
+                    size_t current_count = covered_count.load(std::memory_order_relaxed);
+                    if (current_count % 10000 == 0) {
+#pragma omp critical
+                        {
+                            std::cout << "\rNSM merged " << 100 * current_count / G1->cur_element_count << " %..." << std::flush;
+                        }
+                    }
+                }
+            }
+        }
+
+        if (print) {
+            size_t final_L = L_cnt.load(std::memory_order_relaxed);
+            size_t final_G = G_cnt.load(std::memory_order_relaxed);
+            std::cout << "\rNSM merge completed: 100%" << std::endl;
+            std::cout << "L : G = " << final_L << " : " << final_G << " = " << (final_G > 0 ? (float)final_L/final_G : 0.0f) << std::endl;
+        }
+    }
+
 
     void fxy_merge(unsigned m, std::vector<HierarchicalNSW<dist_t>*> graphs, const Parameters &parameters) // 直接update MergeHierarchicalNSW
     {

@@ -1,0 +1,69 @@
+Starting index construction at Tue Oct 14 12:11:32 PM CST 2025
+L : G = 328716 : 171284 = 1.91913
+L : G = 328883 : 171117 = 1.92198
+Merge time: 16.2423 s; deep1M_random_RGTM_et0_ef200_10_3_M30.hnsw
+L : G = 328716 : 171284 = 1.91913
+L : G = 328883 : 171117 = 1.92198
+Merge time: 17.042 s; deep1M_random_RGTM_et0_ef200_20_3_M30.hnsw
+L : G = 328716 : 171284 = 1.91913
+L : G = 328883 : 171117 = 1.92198
+Merge time: 17.8867 s; deep1M_random_RGTM_et0_ef200_30_3_M30.hnsw
+L : G = 328716 : 171284 = 1.91913
+L : G = 328883 : 171117 = 1.92198
+Merge time: 18.5798 s; deep1M_random_RGTM_et0_ef200_40_3_M30.hnsw
+L : G = 377970 : 122030 = 3.09735
+L : G = 377935 : 122065 = 3.09618
+Merge time: 14.1278 s; deep1M_random_RGTM_et0_ef200_10_5_M30.hnsw
+L : G = 377970 : 122030 = 3.09735
+L : G = 377935 : 122065 = 3.09618
+Merge time: 15.0143 s; deep1M_random_RGTM_et0_ef200_20_5_M30.hnsw
+L : G = 377970 : 122030 = 3.09735
+L : G = 377935 : 122065 = 3.09618
+Merge time: 15.8832 s; deep1M_random_RGTM_et0_ef200_30_5_M30.hnsw
+L : G = 377970 : 122030 = 3.09735
+L : G = 377935 : 122065 = 3.09618
+Merge time: 16.7538 s; deep1M_random_RGTM_et0_ef200_40_5_M30.hnsw
+L : G = 424338 : 75662 = 5.60834
+L : G = 424068 : 75932 = 5.58484
+Merge time: 11.765 s; deep1M_random_RGTM_et0_ef200_10_10_M30.hnsw
+L : G = 424338 : 75662 = 5.60834
+L : G = 424068 : 75932 = 5.58484
+Merge time: 13.2377 s; deep1M_random_RGTM_et0_ef200_20_10_M30.hnsw
+L : G = 424338 : 75662 = 5.60834
+L : G = 424068 : 75932 = 5.58484
+Merge time: 14.068 s; deep1M_random_RGTM_et0_ef200_30_10_M30.hnsw
+L : G = 424338 : 75662 = 5.60834
+L : G = 424068 : 75932 = 5.58484
+Merge time: 15.769 s; deep1M_random_RGTM_et0_ef200_40_10_M30.hnsw
+Merge time: 31.1249 s; deep1M_random_NGM_et0_ef200_M30.hnsw
+Index construction completed at Tue Oct 14 12:15:39 PM CST 2025
+Starting index construction at Wed Oct 15 02:48:08 PM CST 2025
+L : G = 328426 : 171574 = 1.91419
+L : G = 328418 : 171582 = 1.91406
+Merge time: 7.7943 s; deep1M_random_RGTM_et0_ef40_5_3_M30.hnsw
+L : G = 328426 : 171574 = 1.91419
+L : G = 328418 : 171582 = 1.91406
+Merge time: 8.35318 s; deep1M_random_RGTM_et0_ef40_10_3_M30.hnsw
+L : G = 328426 : 171574 = 1.91419
+L : G = 328418 : 171582 = 1.91406
+Merge time: 9.42461 s; deep1M_random_RGTM_et0_ef40_20_3_M30.hnsw
+L : G = 328426 : 171574 = 1.91419
+L : G = 328418 : 171582 = 1.91406
+Merge time: 11.0969 s; deep1M_random_RGTM_et0_ef40_40_3_M30.hnsw
+Merge time: 10.219 s; deep1M_random_NGM_et0_ef40_M30.hnsw
+Index construction completed at Wed Oct 15 02:49:07 PM CST 2025
+Starting index construction at Wed Oct 15 09:20:43 PM CST 2025
+L : G = 328339 : 171661 = 1.91272
+L : G = 328421 : 171579 = 1.91411
+Merge time: 7.74904 s; deep1M_random_RGTM_et0_ef40_5_3_M30.hnsw
+L : G = 328339 : 171661 = 1.91272
+L : G = 328421 : 171579 = 1.91411
+Merge time: 8.34466 s; deep1M_random_RGTM_et0_ef40_10_3_M30.hnsw
+L : G = 328339 : 171661 = 1.91272
+L : G = 328421 : 171579 = 1.91411
+Merge time: 9.35485 s; deep1M_random_RGTM_et0_ef40_20_3_M30.hnsw
+L : G = 328339 : 171661 = 1.91272
+L : G = 328421 : 171579 = 1.91411
+Merge time: 11.0247 s; deep1M_random_RGTM_et0_ef40_40_3_M30.hnsw
+Merge time: 10.1474 s; deep1M_random_NGM_et0_ef40_M30.hnsw
+Index construction completed at Wed Oct 15 09:21:43 PM CST 2025

@@ -223,10 +223,15 @@ def bvecs_write(fname, m):
 
 
 if __name__ == "__main__":
-    data = fvecs_read('/home/jlc/research/nsg-merge/data/sift/random/bi-index-data/sift_query.fvecs')
-    q100 = data[:100,:]
-    q1000 = data[:1000,:]
-    print(q100.shape)
-    print(q1000.shape)
-    fvecs_write('/home/jlc/research/nsg-merge/data/sift/random/bi-index-data/sift_100query.fvecs', q100)
-    fvecs_write('/home/jlc/research/nsg-merge/data/sift/random/bi-index-data/sift_1000query.fvecs', q1000)
+    dbs = ["sift", "deep1M", "glove100d", "crawl", "msong", "gist", "msmarco1M"]
+    for db in dbs:
+        data = fvecs_read(f'/mnt/ssd/merge_bench/{db}/{db}_base.fvecs')
+        query = fvecs_read(f'/mnt/ssd/merge_bench/{db}/{db}_query.fvecs')
+        print(f'{db} : {data.shape}; query : {query.shape}')
+    # data = fvecs_read('/home/jlc/research/nsg-merge/data/sift/random/bi-index-data/sift_query.fvecs')
+    # q100 = data[:100,:]
+    # q1000 = data[:1000,:]
+    # print(q100.shape)
+    # print(q1000.shape)
+    # fvecs_write('/home/jlc/research/nsg-merge/data/sift/random/bi-index-data/sift_100query.fvecs', q100)
+    # fvecs_write('/home/jlc/research/nsg-merge/data/sift/random/bi-index-data/sift_1000query.fvecs', q1000)

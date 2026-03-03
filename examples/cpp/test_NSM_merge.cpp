@@ -1,5 +1,5 @@
 //
-// Created by jlc on 9/21/25.
+// Created for NSM (Neighbor Sliding Merge) algorithm testing
 //
 #include "../../hnswlib/hnswlib.h"
 #include <thread>
@@ -8,8 +8,6 @@
 #include "../../hnswlib/parameter.h"
 
 // Multithreaded executor
-// The helper function copied from python_bindings/bindings.cpp (and that itself is copied from nmslib)
-// An alternative is using #pragme omp parallel for or any other C++ threading
 template<class Function>
 inline void ParallelFor(size_t start, size_t end, size_t numThreads, Function fn) {
     if (numThreads <= 0) {
@@ -24,13 +22,11 @@ inline void ParallelFor(size_t start, size_t end, size_t numThreads, Function fn
         std::vector<std::thread> threads;
         std::atomic<size_t> current(start);
 
-        // keep track of exceptions in threads
-        // https://stackoverflow.com/a/32428427/1713196
         std::exception_ptr lastException = nullptr;
         std::mutex lastExceptMutex;
 
         for (size_t threadId = 0; threadId < numThreads; ++threadId) {
-            threads.push_back(std::thread([&, threadId] { // 创造该线程后，该线程自己执行下面的内容，而上面的循环开始创造下一个线程，主线程只负责创建线程，并将线程对象存储到 threads 容器中
+            threads.push_back(std::thread([&, threadId] {
                 while (true) {
                     size_t id = current.fetch_add(1);
 
@@ -43,12 +39,6 @@ inline void ParallelFor(size_t start, size_t end, size_t numThreads, Function fn
                     } catch (...) {
                         std::unique_lock<std::mutex> lastExcepLock(lastExceptMutex);
                         lastException = std::current_exception();
-                        /*
-                         * This will work even when current is the largest value that
-                         * size_t can fit, because fetch_add returns the previous value
-                         * before the increment (what will result in overflow
-                         * and produce 0 instead of current + 1).
-                         */
                         current = end;
                         break;
                     }
@@ -56,7 +46,7 @@ inline void ParallelFor(size_t start, size_t end, size_t numThreads, Function fn
             }));
         }
         for (auto &thread : threads) {
-            thread.join(); // 让主线程（或调用 join() 的线程）阻塞，直到被 join() 的线程完成运行
+            thread.join();
         }
         if (lastException) {
             std::rethrow_exception(lastException);
@@ -66,9 +56,9 @@ inline void ParallelFor(size_t start, size_t end, size_t numThreads, Function fn
 
 
 int main(int argc, char** argv) {
-    if (argc < 14 || argc > 16) {
+    if (argc < 12 || argc > 14) {
         std::cout << argv[0]
-                  << " data_file global_ef local_ef self_ef M sub_ef sub_M graph_num graph_index_file merged_nsg_path ET ratio merge_order_selection [T] [merge_order_file]"
+                  << " data_file global_ef local_ef M sub_ef sub_M graph_num graph_index_file merged_nsg_path k_plus merge_order_selection [T] [merge_order_file]"
                   << std::endl;
         exit(-1);
     }
@@ -78,34 +68,47 @@ int main(int argc, char** argv) {
     load_data(argv[1], data, max_elements, dim);
     int ef_construction = atoi(argv[2]);
     int local_ef = atoi(argv[3]);
-    int self_ef = atoi(argv[4]);
-    int M = atoi(argv[5]);
-    int sub_ef = atoi(argv[6]);
-    int sub_M = atoi(argv[7]);
-    int graph_num = atoi(argv[8]);
-    std::string graph_index_file = std::string(argv[9]);
-    std::string merged_nsg_path = std::string(argv[10]);
-    int ET = atoi(argv[11]);
-    float ratio = atof(argv[12]);
-    std::string merge_order = std::string(argv[13]);
+    int M = atoi(argv[4]);
+    int sub_ef = atoi(argv[5]);
+    int sub_M = atoi(argv[6]);
+    int graph_num = atoi(argv[7]);
+    std::string graph_index_file = std::string(argv[8]);
+    std::string merged_nsg_path = std::string(argv[9]);
+    int k_plus = atoi(argv[10]);
+    std::string merge_order = std::string(argv[11]);
     std::string merge_order_file = "None";
     int T = 1;  // 默认值为1
-    if (argc == 15) {
-        T = atoi(argv[14]);
-    } else if (argc == 16) {
-        T = atoi(argv[14]);
-        merge_order_file = std::string(argv[15]);
+    if (argc == 13) {
+        T = atoi(argv[12]);
+    } else if (argc == 14) {
+        T = atoi(argv[12]);
+        merge_order_file = std::string(argv[13]);
     }
 
     hnswlib::Parameters params;
-    params.Set<bool>("early_terminate", ET);
-    params.Set<float>("et_ratio", ratio);
     params.Set<int>("local_ef", local_ef);
-    params.Set<int>("self_ef", self_ef);
-    params.Set<std::string>("method", "RGTM");
+    params.Set<int>("k_plus", k_plus);
+    params.Set<std::string>("method", "NSM");
     params.Set<std::string>("merge_order_selection", merge_order);
     params.Set<std::string>("merge_order_file", merge_order_file);
     params.Set<bool>("print", true);
+
+    std::cout << "parameters: " << std::endl;
+    std::cout << "global_ef: " << ef_construction << std::endl;
+    std::cout << "local_ef: " << local_ef << std::endl;
+    std::cout << "M: " << M << std::endl;
+    std::cout << "sub_ef: " << sub_ef << std::endl;
+    std::cout << "sub_M: " << sub_M << std::endl;
+    std::cout << "graph_num: " << graph_num << std::endl;
+    std::cout << "graph_index_file: " << graph_index_file << std::endl;
+    std::cout << "merged_nsg_path: " << merged_nsg_path << std::endl;
+    std::cout << "k_plus: " << k_plus << std::endl;
+    std::cout << "merge_order_selection: " << merge_order << std::endl;
+    std::cout << "merge_order_file: " << merge_order_file << std::endl;
+    std::cout << "T: " << T << std::endl;
+    std::cout << "print: " << std::endl;
+    std::cout << std::endl;
+
 
     // Initing index
     hnswlib::L2Space space(dim);
@@ -121,7 +124,7 @@ int main(int argc, char** argv) {
         graphs[i] = hnsw;
     }
 
-    int num_threads = T;      // Number of threads for operations with index
+    int num_threads = T;
     omp_set_num_threads(num_threads);
 
     auto s = std::chrono::high_resolution_clock::now();
@@ -138,11 +141,3 @@ int main(int argc, char** argv) {
     delete alg_hnsw;
     return 0;
 }
-
-// L : G = 427136 : 72864 = 5.8621
-// L : G = 427220 : 72780 = 5.87002
-// Merge time: 11.3352 s; deep1M_random_RGTM_et0_ef80_M32.hnsw
-
-// L : G = 427136 : 72864 = 5.8621
-// L : G = 427220 : 72780 = 5.87002
-// Merge time: 15.9331 s; deep1M_random_RGTM_et0_ef80_M32.hnsw

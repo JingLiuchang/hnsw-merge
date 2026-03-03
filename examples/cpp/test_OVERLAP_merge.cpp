@@ -210,7 +210,7 @@ int main(int argc, char** argv) {
     params.Set<bool>("print", true);
     params.Set<unsigned>("kbase", kbase);
 
-    int num_threads = 72;       // Number of threads for operations with index
+    int num_threads = 8;       // Number of threads for operations with index
     omp_set_num_threads(num_threads);
     double time_cost = 0.0;
 

@@ -81,7 +81,7 @@ int main(int argc, char** argv) {
     int M = atoi(argv[3]);
     std::string graph_index_path = std::string(argv[4]);
 
-    int num_threads = 72;       // Number of threads for operations with index
+    int num_threads = 96;       // Number of threads for operations with index
 
     // Initing index
     hnswlib::L2Space space(dim);

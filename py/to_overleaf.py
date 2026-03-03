@@ -8,9 +8,8 @@ import glob
 import re
 import os
 
-
-datasets = ['gist']
-# datasets = ['deep1M', 'sift', 'msmarco1M', 'msong', 'anton1m', 'imagenet1m']
+# datasets = ['deep10m', 'anton10m', 'imagenet10m', 'msmarc10m']
+datasets = ['sift']
 methods = ['random']
 merge_m = [2]
 et = 0
@@ -20,14 +19,15 @@ if __name__=="__main__":
     csv_files = []
     line_names = []
     for db in datasets:
+        print(f"Processing dataset: {db} ################################################")
         for method in methods:
             for m in merge_m:
                 if m == 2:
-                    base_path = f'/mnt/ssd/merge_bench/{db}/{method}/performance/bi/K10'
+                    base_path = f'/mnt/ssd/merge_bench/{db}/{method}/performance/bi/K10/'
                     output = f'/home/jlc/hnsw-merge/performance/bi'
                 if m > 2:
-                    base_path = f'/mnt/ssd/merge_bench/{db}/{method}/performance/{m}parts/K100'
-                    output = f'/home/jlc/hnsw-merge/performance/{m}parts'
+                    base_path = f'/home/jlc/hnsw-merge/performance/{db}/{m}parts'
+                    output = f'/home/jlc/hnsw-merge/performance'
 
 
                 csv_files = glob.glob(f"{base_path}/*.csv")
@@ -39,11 +39,6 @@ if __name__=="__main__":
                     if match:
                         line_names.append(match.group(1))
 
-
-                plt.figure(figsize=(10, 6))
-
-                num_files = len(csv_files)
-                colors = cm.tab10(np.linspace(0, 1, num_files)) if num_files <= 10 else cm.Set3(np.linspace(0, 1, num_files))
 
                 for i, csv_file in enumerate(csv_files):
                     file_path = csv_file
@@ -64,21 +59,14 @@ if __name__=="__main__":
                         recalls = [data[0] for data in sorted_data]
                         latencies = [data[1] for data in sorted_data]
 
-                        plt.plot(recalls, latencies, marker='o', linestyle='-', label=line_names[i], color=colors[i])
+                        print(f"{csv_file}: ")
+                        for recall, latency in zip(recalls, latencies):
+                            print(f"({recall}, {latency})")
                     except Exception as e:
                         print(f"处理文件 {csv_file} 时出错: {e}")
 
-                plt.xlabel('Recall')
-                plt.ylabel('QPS')
-                plt.title('Recall vs QPS for Different Algorithms')
-                plt.grid(True, linestyle='--', alpha=0.7)
-                plt.legend()
+                log_file = f'{base_path}/RGTM_merge.log'
 
-                # 可选：对y轴使用对数刻度，因为延迟可能有很大差异
-                # plt.yscale('log', base=2)
+                merge_times = []
+                names = []
 
-                if not exists(output):
-                    os.makedirs(output)
-                plt.tight_layout()
-                plt.savefig(f"{output}/{db}_recall_vs_QPS_comparison_K10.png", dpi=300)
-                plt.show()

@@ -65,6 +65,17 @@ class HierarchicalNSW : public AlgorithmInterface<dist_t> {
     mutable std::atomic<long> metric_distance_computations{0};
     mutable std::atomic<long> metric_hops{0};
 
+    // 获取距离计算次数
+    size_t getDistanceComputations() const {
+        return metric_distance_computations.load();
+    }
+
+    // 重置距离计算次数
+    void resetDistanceComputations() {
+        metric_distance_computations.store(0);
+        metric_hops.store(0);
+    }
+
     bool allow_replace_deleted_ = false;  // flag to replace deleted elements (marked as deleted) during insertions
 
     std::mutex deleted_elements_lock;  // lock for deleted_elements
@@ -1005,7 +1016,7 @@ class HierarchicalNSW : public AlgorithmInterface<dist_t> {
         std::ifstream input(location, std::ios::binary);
 
         if (!input.is_open())
-            throw std::runtime_error("Cannot open file");
+            throw std::runtime_error("Cannot open file: " + location);
 
         clear();
         // get file size:
