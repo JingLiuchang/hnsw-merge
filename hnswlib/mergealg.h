@@ -2614,29 +2614,26 @@ class MergeHierarchicalNSW : public HierarchicalNSW<dist_t> {
         }
         std::sort(edges_to_y0.begin(), edges_to_y0.end());
 
-        std::sort(mst_edges.begin(), mst_edges.end(), [&](auto& a, auto& b) {
-            float* u1 = (float*) G1->getDataByInternalId(a.first);
-            float* v1 = (float*) G1->getDataByInternalId(a.second);
-            float* u2 = (float*) G1->getDataByInternalId(b.first);
-            float* v2 = (float*) G1->getDataByInternalId(b.second);
-            return fstdistfunc_(u1, v1, dist_func_param_) < fstdistfunc_(u2, v2, dist_func_param_);
-        });
+        // Compute MST edge weights and sort by ascending weight
+        std::vector<std::tuple<dist_t, tableint, tableint>> sorted_mst_edges;
+        sorted_mst_edges.reserve(mst_edges.size());
+        for (auto& e : mst_edges) {
+            float* u_data = (float*) G1->getDataByInternalId(e.first);
+            float* v_data = (float*) G1->getDataByInternalId(e.second);
+            sorted_mst_edges.push_back({fstdistfunc_(u_data, v_data, dist_func_param_), e.first, e.second});
+        }
+        std::sort(sorted_mst_edges.begin(), sorted_mst_edges.end());
 
-        for (tableint i = 0; i < n; ++i) component[i] = i;
+        component.resize(n + 1);
+        for (tableint i = 0; i <= n; ++i) component[i] = i;
         tableint y0_comp = n;
 
         std::vector<tableint> mst_parent(n, n);
         size_t y0_idx = 0, mst_idx = 0;
 
-        while (y0_idx < n || mst_idx < mst_edges.size()) {
+        while (y0_idx < n || mst_idx < sorted_mst_edges.size()) {
             dist_t d_y0 = (y0_idx < n) ? edges_to_y0[y0_idx].first : std::numeric_limits<dist_t>::max();
-            dist_t d_mst = std::numeric_limits<dist_t>::max();
-            if (mst_idx < mst_edges.size()) {
-                auto [u, v] = mst_edges[mst_idx];
-                float* u_data = (float*) G1->getDataByInternalId(u);
-                float* v_data = (float*) G1->getDataByInternalId(v);
-                d_mst = fstdistfunc_(u_data, v_data, dist_func_param_);
-            }
+            dist_t d_mst = (mst_idx < sorted_mst_edges.size()) ? std::get<0>(sorted_mst_edges[mst_idx]) : std::numeric_limits<dist_t>::max();
 
             if (d_y0 <= d_mst && y0_idx < n) {
                 tableint node = edges_to_y0[y0_idx].second;
@@ -2644,8 +2641,9 @@ class MergeHierarchicalNSW : public HierarchicalNSW<dist_t> {
                     mst_parent[node] = n;
                 }
                 y0_idx++;
-            } else if (mst_idx < mst_edges.size()) {
-                auto [u, v] = mst_edges[mst_idx];
+            } else if (mst_idx < sorted_mst_edges.size()) {
+                tableint u = std::get<1>(sorted_mst_edges[mst_idx]);
+                tableint v = std::get<2>(sorted_mst_edges[mst_idx]);
                 if (unite(u, v)) {
                     mst_parent[v] = u;
                 }
