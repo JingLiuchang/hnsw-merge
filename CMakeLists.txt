@@ -109,6 +109,9 @@ if(HNSWLIB_EXAMPLES)
     add_executable(test_NSM_merge examples/cpp/test_NSM_merge.cpp)
     target_link_libraries(test_NSM_merge hnswlib ${TBB_LIBRARIES})
 
+    add_executable(test_SIM_merge examples/cpp/test_SIM_merge.cpp)
+    target_link_libraries(test_SIM_merge hnswlib ${TBB_LIBRARIES})
+
     add_executable(test_OVERLAP_merge examples/cpp/test_OVERLAP_merge.cpp)
     target_link_libraries(test_OVERLAP_merge hnswlib ${TBB_LIBRARIES})
 
