@@ -2554,74 +2554,115 @@ class MergeHierarchicalNSW : public HierarchicalNSW<dist_t> {
             std::cout << "SIM merge: G" << G1_id << " -> G" << G2_id << std::endl;
         }
 
-        // ===== Phase 1: Build MST via Prim's algorithm =====
-        // Virtual root = n (sentinel), connected to all G1 nodes via dist to G2's entry point
-        const float* entry_data = (const float*) G2->getDataByInternalId(G2->enterpoint_node_);
+        // ===== Phase 1: Build MST on G1 (Algorithm 4 - Borůvka-style) =====
+        std::vector<tableint> component(n);
+        for (tableint i = 0; i < n; ++i) component[i] = i;
 
-        std::vector<dist_t> min_dist(n, std::numeric_limits<dist_t>::max());
-        std::vector<tableint> mst_parent(n, (tableint)n); // n = virtual root
-        std::vector<bool> in_mst(n, false);
+        std::function<tableint(tableint)> find = [&](tableint x) {
+            return component[x] == x ? x : component[x] = find(component[x]);
+        };
 
-        // Min-heap: (distance, node_id)
-        using pii = std::pair<dist_t, tableint>;
-        std::priority_queue<pii, std::vector<pii>, std::greater<pii>> pq;
+        auto unite = [&](tableint x, tableint y) {
+            x = find(x); y = find(y);
+            if (x != y) { component[x] = y; return true; }
+            return false;
+        };
 
-        // Initialize: each node's initial key = dist to G2 entry point
-        for (tableint i = 0; i < n; ++i) {
-            float* node_data = (float*) G1->getDataByInternalId(i);
-            min_dist[i] = fstdistfunc_(node_data, entry_data, dist_func_param_);
-            pq.push({min_dist[i], i});
+        std::vector<std::pair<tableint, tableint>> mst_edges;
+        std::vector<tableint> next_nbr(n, 0);
+
+        while (mst_edges.size() < n - 1) {
+            std::vector<std::tuple<dist_t, tableint, tableint>> min_edge(n, {std::numeric_limits<dist_t>::max(), (tableint)-1, (tableint)-1});
+
+            for (tableint u = 0; u < n; ++u) {
+                tableint cu = find(u);
+                linklistsizeint* ll = G1->get_linklist0(u);
+                unsigned short int nbr_count = G1->getListCount(ll);
+                tableint* neighbors = (tableint*)(ll + 1);
+
+                for (unsigned k = next_nbr[u]; k < nbr_count; ++k) {
+                    tableint v = neighbors[k];
+                    if (find(v) != cu) {
+                        float* u_data = (float*) G1->getDataByInternalId(u);
+                        float* v_data = (float*) G1->getDataByInternalId(v);
+                        dist_t d = fstdistfunc_(u_data, v_data, dist_func_param_);
+                        if (d < std::get<0>(min_edge[cu])) {
+                            min_edge[cu] = {d, u, v};
+                        }
+                        break;
+                    }
+                    next_nbr[u]++;
+                }
+            }
+
+            bool added = false;
+            for (tableint c = 0; c < n; ++c) {
+                auto [d, u, v] = min_edge[c];
+                if (u != (tableint)-1 && unite(u, v)) {
+                    mst_edges.push_back({u, v});
+                    added = true;
+                }
+            }
+            if (!added) break;
         }
 
-        size_t mst_edges = 0;
-        while (!pq.empty() && mst_edges < n) {
-            auto [d, u] = pq.top();
-            pq.pop();
+        // ===== Phase 2: Merge y0 into MST (Algorithm 5) =====
+        const float* y0_data = (const float*) G2->getDataByInternalId(G2->enterpoint_node_);
 
-            if (in_mst[u]) continue;
-            in_mst[u] = true;
-            mst_edges++;
+        std::vector<std::pair<dist_t, tableint>> edges_to_y0;
+        for (tableint i = 0; i < n; ++i) {
+            float* node_data = (float*) G1->getDataByInternalId(i);
+            edges_to_y0.push_back({fstdistfunc_(node_data, y0_data, dist_func_param_), i});
+        }
+        std::sort(edges_to_y0.begin(), edges_to_y0.end());
 
-            // Relax neighbors of u in G1's level-0 adjacency
-            linklistsizeint* ll = G1->get_linklist0(u);
-            unsigned short int nbr_count = G1->getListCount(ll);
-            tableint* neighbors = (tableint*)(ll + 1);
+        std::sort(mst_edges.begin(), mst_edges.end(), [&](auto& a, auto& b) {
+            float* u1 = (float*) G1->getDataByInternalId(a.first);
+            float* v1 = (float*) G1->getDataByInternalId(a.second);
+            float* u2 = (float*) G1->getDataByInternalId(b.first);
+            float* v2 = (float*) G1->getDataByInternalId(b.second);
+            return fstdistfunc_(u1, v1, dist_func_param_) < fstdistfunc_(u2, v2, dist_func_param_);
+        });
 
-            for (unsigned k = 0; k < nbr_count; ++k) {
-                tableint v = neighbors[k];
-                if (!in_mst[v]) {
-                    float* u_data = (float*) G1->getDataByInternalId(u);
-                    float* v_data = (float*) G1->getDataByInternalId(v);
-                    dist_t edge_dist = fstdistfunc_(u_data, v_data, dist_func_param_);
-                    if (edge_dist < min_dist[v]) {
-                        min_dist[v] = edge_dist;
-                        mst_parent[v] = u;
-                        pq.push({edge_dist, v});
-                    }
+        for (tableint i = 0; i < n; ++i) component[i] = i;
+        tableint y0_comp = n;
+
+        std::vector<tableint> mst_parent(n, n);
+        size_t y0_idx = 0, mst_idx = 0;
+
+        while (y0_idx < n || mst_idx < mst_edges.size()) {
+            dist_t d_y0 = (y0_idx < n) ? edges_to_y0[y0_idx].first : std::numeric_limits<dist_t>::max();
+            dist_t d_mst = std::numeric_limits<dist_t>::max();
+            if (mst_idx < mst_edges.size()) {
+                auto [u, v] = mst_edges[mst_idx];
+                float* u_data = (float*) G1->getDataByInternalId(u);
+                float* v_data = (float*) G1->getDataByInternalId(v);
+                d_mst = fstdistfunc_(u_data, v_data, dist_func_param_);
+            }
+
+            if (d_y0 <= d_mst && y0_idx < n) {
+                tableint node = edges_to_y0[y0_idx].second;
+                if (unite(node, y0_comp)) {
+                    mst_parent[node] = n;
                 }
+                y0_idx++;
+            } else if (mst_idx < mst_edges.size()) {
+                auto [u, v] = mst_edges[mst_idx];
+                if (unite(u, v)) {
+                    mst_parent[v] = u;
+                }
+                mst_idx++;
             }
         }
 
-        if (print) {
-            std::cout << "MST construction done, edges: " << mst_edges << std::endl;
-        }
-
-        // ===== Phase 2: Build tree structure =====
-        // children[u] = nodes whose MST parent is u
-        // roots = nodes whose MST parent is n (virtual root) → need Naive Search
         std::vector<std::vector<tableint>> children(n);
         std::vector<tableint> roots;
-
         for (tableint i = 0; i < n; ++i) {
-            if (mst_parent[i] == (tableint)n) {
+            if (mst_parent[i] == n) {
                 roots.push_back(i);
             } else {
                 children[mst_parent[i]].push_back(i);
             }
-        }
-
-        if (print) {
-            std::cout << "Tree structure: " << roots.size() << " roots (components)" << std::endl;
         }
 
         // ===== Phase 3: DFS processing with parallelism =====
