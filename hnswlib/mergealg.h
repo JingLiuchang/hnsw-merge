@@ -2530,12 +2530,10 @@ class MergeHierarchicalNSW : public HierarchicalNSW<dist_t> {
             }
         }
 
-        if (print) {
-            size_t final_L = L_cnt.load(std::memory_order_relaxed);
-            size_t final_G = G_cnt.load(std::memory_order_relaxed);
-            std::cout << "\rNSM merge (optimized) completed: 100%" << std::endl;
-            std::cout << "L : G = " << final_L << " : " << final_G << " = " << (final_G > 0 ? (float)final_L/final_G : 0.0f) << std::endl;
-        }
+        size_t final_L = L_cnt.load(std::memory_order_relaxed);
+        size_t final_G = G_cnt.load(std::memory_order_relaxed);
+        std::cout << "\rNSM merge (optimized) completed: 100%" << std::endl;
+        std::cout << "L : G = " << final_L << " : " << final_G << " = " << (final_G > 0 ? (float)final_L/final_G : 0.0f) << std::endl;
     }
 
 
@@ -2748,12 +2746,10 @@ class MergeHierarchicalNSW : public HierarchicalNSW<dist_t> {
             }
         }
 
-        if (print) {
-            size_t final_L = L_cnt.load(std::memory_order_relaxed);
-            size_t final_G = G_cnt.load(std::memory_order_relaxed);
-            std::cout << "\rSIM merge completed: 100%" << std::endl;
-            std::cout << "L : G = " << final_L << " : " << final_G << " = " << (final_G > 0 ? (float)final_L/final_G : 0.0f) << std::endl;
-        }
+        size_t final_L = L_cnt.load(std::memory_order_relaxed);
+        size_t final_G = G_cnt.load(std::memory_order_relaxed);
+        std::cout << "\rSIM merge completed: 100%" << std::endl;
+        std::cout << "L : G = " << final_L << " : " << final_G << " = " << (final_G > 0 ? (float)final_L/final_G : 0.0f) << std::endl;
     }
 
     void fxy_merge(unsigned m, std::vector<HierarchicalNSW<dist_t>*> graphs, const Parameters &parameters) // 直接update MergeHierarchicalNSW
