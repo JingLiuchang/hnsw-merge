@@ -18,6 +18,7 @@
 #include <algorithm>
 #include "utils.h"
 #include <omp.h>
+#include <stack>
 
 namespace hnswlib {
 typedef unsigned int tableint;
@@ -1766,6 +1767,12 @@ class MergeHierarchicalNSW : public HierarchicalNSW<dist_t> {
                 NSM_merge_into_later_optimized(graphs, p.first, p.second, parameters); // first merge into second
             }
         }
+        else if (method == "SIM")
+        {
+            for (auto&& p : merge_order) { // pairwise merge
+                SIM_merge_into_later(graphs, p.first, p.second, parameters); // first merge into second
+            }
+        }
         else
         {
             std::cerr << "Error: unknown method " << method << std::endl;
@@ -2531,6 +2538,182 @@ class MergeHierarchicalNSW : public HierarchicalNSW<dist_t> {
         }
     }
 
+
+    void SIM_merge_into_later(std::vector<HierarchicalNSW<dist_t>*> graphs, unsigned G1_id, unsigned G2_id, const Parameters &parameters)
+    {
+        HierarchicalNSW<dist_t>* G1 = graphs[G1_id];
+        HierarchicalNSW<dist_t>* G2 = graphs[G2_id];
+        bool print = parameters.Get<bool>("print");
+
+        unsigned global_ef = ef_construction_;
+        unsigned local_ef = parameters.Get<unsigned>("local_ef");
+
+        size_t n = G1->cur_element_count;
+
+        if (print) {
+            std::cout << "SIM merge: G" << G1_id << " -> G" << G2_id << std::endl;
+        }
+
+        // ===== Phase 1: Build MST via Prim's algorithm =====
+        // Virtual root = n (sentinel), connected to all G1 nodes via dist to G2's entry point
+        const float* entry_data = (const float*) G2->getDataByInternalId(G2->enterpoint_node_);
+
+        std::vector<dist_t> min_dist(n, std::numeric_limits<dist_t>::max());
+        std::vector<tableint> mst_parent(n, (tableint)n); // n = virtual root
+        std::vector<bool> in_mst(n, false);
+
+        // Min-heap: (distance, node_id)
+        using pii = std::pair<dist_t, tableint>;
+        std::priority_queue<pii, std::vector<pii>, std::greater<pii>> pq;
+
+        // Initialize: each node's initial key = dist to G2 entry point
+        for (tableint i = 0; i < n; ++i) {
+            float* node_data = (float*) G1->getDataByInternalId(i);
+            min_dist[i] = fstdistfunc_(node_data, entry_data, dist_func_param_);
+            pq.push({min_dist[i], i});
+        }
+
+        size_t mst_edges = 0;
+        while (!pq.empty() && mst_edges < n) {
+            auto [d, u] = pq.top();
+            pq.pop();
+
+            if (in_mst[u]) continue;
+            in_mst[u] = true;
+            mst_edges++;
+
+            // Relax neighbors of u in G1's level-0 adjacency
+            linklistsizeint* ll = G1->get_linklist0(u);
+            unsigned short int nbr_count = G1->getListCount(ll);
+            tableint* neighbors = (tableint*)(ll + 1);
+
+            for (unsigned k = 0; k < nbr_count; ++k) {
+                tableint v = neighbors[k];
+                if (!in_mst[v]) {
+                    float* u_data = (float*) G1->getDataByInternalId(u);
+                    float* v_data = (float*) G1->getDataByInternalId(v);
+                    dist_t edge_dist = fstdistfunc_(u_data, v_data, dist_func_param_);
+                    if (edge_dist < min_dist[v]) {
+                        min_dist[v] = edge_dist;
+                        mst_parent[v] = u;
+                        pq.push({edge_dist, v});
+                    }
+                }
+            }
+        }
+
+        if (print) {
+            std::cout << "MST construction done, edges: " << mst_edges << std::endl;
+        }
+
+        // ===== Phase 2: Build tree structure =====
+        // children[u] = nodes whose MST parent is u
+        // roots = nodes whose MST parent is n (virtual root) → need Naive Search
+        std::vector<std::vector<tableint>> children(n);
+        std::vector<tableint> roots;
+
+        for (tableint i = 0; i < n; ++i) {
+            if (mst_parent[i] == (tableint)n) {
+                roots.push_back(i);
+            } else {
+                children[mst_parent[i]].push_back(i);
+            }
+        }
+
+        if (print) {
+            std::cout << "Tree structure: " << roots.size() << " roots (components)" << std::endl;
+        }
+
+        // ===== Phase 3: DFS processing with parallelism =====
+        std::atomic<size_t> G_cnt{0};
+        std::atomic<size_t> L_cnt{0};
+        std::atomic<size_t> processed_count{0};
+
+#pragma omp parallel for schedule(dynamic)
+        for (size_t r = 0; r < roots.size(); ++r) {
+            // Iterative DFS over this subtree
+            // Stack entries: (node_id, parent_results as shared_ptr)
+            // nullptr parent_results → root → needs Global_merge
+            using results_ptr = std::shared_ptr<std::vector<tableint>>;
+            struct dfs_entry {
+                tableint node;
+                results_ptr parent_results; // nullptr for roots
+            };
+
+            std::stack<dfs_entry> stk;
+            stk.push({roots[r], nullptr});
+
+            while (!stk.empty()) {
+                auto [node_id, parent_res] = stk.top();
+                stk.pop();
+
+                float* node_data = (float*) G1->getDataByInternalId(node_id);
+                tableint merged_node_id = node_id + globalid_offset[G1_id];
+
+                std::priority_queue<std::pair<dist_t, tableint>, std::vector<std::pair<dist_t, tableint>>, CompareByFirst> top_candidates;
+                auto current_results = std::make_shared<std::vector<tableint>>();
+
+                if (parent_res == nullptr) {
+                    // Root node: Global (Naive) search
+                    std::priority_queue<std::pair<dist_t, tableint>, std::vector<std::pair<dist_t, tableint>>, typename HierarchicalNSW<float>::CompareByFirst>
+                        temp_candidates = G2->Global_merge(node_data, global_ef);
+
+                    while (!temp_candidates.empty()) {
+                        auto candidate = temp_candidates.top();
+                        temp_candidates.pop();
+                        current_results->push_back(candidate.second);
+                        top_candidates.push({candidate.first, candidate.second + globalid_offset[G2_id]});
+                    }
+
+                    G_cnt.fetch_add(1, std::memory_order_relaxed);
+                } else {
+                    // Non-root node: Local sliding from parent's results
+                    std::priority_queue<std::pair<dist_t, tableint>, std::vector<std::pair<dist_t, tableint>>, typename HierarchicalNSW<float>::CompareByFirst>
+                        temp_candidates = G2->Local_merge(node_data, local_ef, *parent_res);
+
+                    while (!temp_candidates.empty()) {
+                        auto candidate = temp_candidates.top();
+                        temp_candidates.pop();
+                        current_results->push_back(candidate.second);
+                        top_candidates.push({candidate.first, candidate.second + globalid_offset[G2_id]});
+                    }
+
+                    L_cnt.fetch_add(1, std::memory_order_relaxed);
+                }
+
+                // Add original neighbors from merged graph
+                linklistsizeint* element_data = get_linklist0(merged_node_id);
+                unsigned short int neighbor_count = getListCount(element_data);
+                for (unsigned k = 0; k < neighbor_count; ++k) {
+                    tableint neighbor_internalid = *((tableint*)(element_data + 1) + k);
+                    top_candidates.push({fstdistfunc_(node_data, getDataByInternalId(neighbor_internalid), dist_func_param_), neighbor_internalid});
+                }
+
+                Pruning_InterInsert(node_data, merged_node_id, top_candidates, 0);
+
+                // Push children onto DFS stack (they'll slide from current_results)
+                for (tableint child : children[node_id]) {
+                    stk.push({child, current_results});
+                }
+
+                // Progress reporting
+                size_t cnt = processed_count.fetch_add(1, std::memory_order_relaxed) + 1;
+                if (print && cnt % 10000 == 0) {
+#pragma omp critical
+                    {
+                        std::cout << "\rSIM merged " << 100 * cnt / n << " %..." << std::flush;
+                    }
+                }
+            }
+        }
+
+        if (print) {
+            size_t final_L = L_cnt.load(std::memory_order_relaxed);
+            size_t final_G = G_cnt.load(std::memory_order_relaxed);
+            std::cout << "\rSIM merge completed: 100%" << std::endl;
+            std::cout << "L : G = " << final_L << " : " << final_G << " = " << (final_G > 0 ? (float)final_L/final_G : 0.0f) << std::endl;
+        }
+    }
 
     void fxy_merge(unsigned m, std::vector<HierarchicalNSW<dist_t>*> graphs, const Parameters &parameters) // 直接update MergeHierarchicalNSW
     {
