@@ -66,7 +66,7 @@ for T in "${Ts[@]}"; do # 并行测试
       sub_ef=300
       sub_M=30
       PARAMS=(
-              "60 10 3"
+              "60 30 3"
             )
     elif [ "$db" == "msmarc10m" ]; then
       ef=50

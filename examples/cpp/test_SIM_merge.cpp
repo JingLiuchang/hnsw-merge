@@ -38,27 +38,29 @@ int main(int argc, char** argv) {
 
     hnswlib::Parameters params;
     params.Set<int>("local_ef", local_ef);
-    params.Set<std::string>("method", "SIM");
+    params.Set<std::string>("method", "SIM_optimized");
     params.Set<std::string>("merge_order_selection", merge_order);
     params.Set<std::string>("merge_order_file", merge_order_file);
-    params.Set<bool>("print", true);
+    params.Set<bool>("use_epsilon_filter", true);
+    params.Set<float>("epsilon_threshold", 1.03);
+    params.Set<bool>("print", false);
 
-    if (params.Get<bool>("print")) {
-        std::cout << "parameters: " << std::endl;
-        std::cout << "global_ef: " << ef_construction << std::endl;
-        std::cout << "local_ef: " << local_ef << std::endl;
-        std::cout << "M: " << M << std::endl;
-        std::cout << "sub_ef: " << sub_ef << std::endl;
-        std::cout << "sub_M: " << sub_M << std::endl;
-        std::cout << "graph_num: " << graph_num << std::endl;
-        std::cout << "graph_index_file: " << graph_index_file << std::endl;
-        std::cout << "merged_nsg_path: " << merged_nsg_path << std::endl;
-        std::cout << "merge_order_selection: " << merge_order << std::endl;
-        std::cout << "merge_order_file: " << merge_order_file << std::endl;
-        std::cout << "T: " << T << std::endl;
-        std::cout << "print: " << std::endl;
-        std::cout << std::endl;
-    }
+    // if (params.Get<bool>("print")) {
+    //     std::cout << "parameters: " << std::endl;
+    //     std::cout << "global_ef: " << ef_construction << std::endl;
+    //     std::cout << "local_ef: " << local_ef << std::endl;
+    //     std::cout << "M: " << M << std::endl;
+    //     std::cout << "sub_ef: " << sub_ef << std::endl;
+    //     std::cout << "sub_M: " << sub_M << std::endl;
+    //     std::cout << "graph_num: " << graph_num << std::endl;
+    //     std::cout << "graph_index_file: " << graph_index_file << std::endl;
+    //     std::cout << "merged_nsg_path: " << merged_nsg_path << std::endl;
+    //     std::cout << "merge_order_selection: " << merge_order << std::endl;
+    //     std::cout << "merge_order_file: " << merge_order_file << std::endl;
+    //     std::cout << "T: " << T << std::endl;
+    //     std::cout << "print: " << std::endl;
+    //     std::cout << std::endl;
+    // }
 
     // Initing index
     hnswlib::L2Space space(dim);

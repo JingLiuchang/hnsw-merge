@@ -2839,6 +2839,8 @@ class MergeHierarchicalNSW : public HierarchicalNSW<dist_t> {
 
     void SIM_merge_into_later_optimized(std::vector<HierarchicalNSW<dist_t>*> graphs, unsigned G1_id, unsigned G2_id, const Parameters &parameters)
     {
+        auto local_timer_s = std::chrono::high_resolution_clock::now();
+        auto local_timer_e = std::chrono::high_resolution_clock::now();
         HierarchicalNSW<dist_t>* G1 = graphs[G1_id];
         HierarchicalNSW<dist_t>* G2 = graphs[G2_id];
         bool print = parameters.Get<bool>("print");
@@ -2876,6 +2878,7 @@ class MergeHierarchicalNSW : public HierarchicalNSW<dist_t> {
         // This directly follows the paper's recommendation:
         // "an approximate εNG can be constructed based on the proximity graphs by
         //  considering both in-neighbors and out-neighbors for each node"
+        local_timer_s = std::chrono::high_resolution_clock::now();
         std::vector<std::unordered_set<tableint>> neighbor_sets(n);
 
         // Step 1: Collect out-neighbors (edges u -> v)
@@ -2926,6 +2929,7 @@ class MergeHierarchicalNSW : public HierarchicalNSW<dist_t> {
             std::sort(approx_εNG[u].begin(), approx_εNG[u].end());
         }
 
+        local_timer_e = std::chrono::high_resolution_clock::now();
         if (print) {
             size_t total_edges = 0;
             for (const auto& neighbors : approx_εNG) {
@@ -2933,8 +2937,10 @@ class MergeHierarchicalNSW : public HierarchicalNSW<dist_t> {
             }
             std::cout << "εNG constructed with " << total_edges << " total edges, avg degree: "
                       << (double)total_edges / n << std::endl;
+            std::cout << "Approximate εNG construction completed in " << std::chrono::duration<double>(local_timer_e - local_timer_s).count() << " seconds" << std::endl;
         }
 
+        local_timer_s = std::chrono::high_resolution_clock::now();
         // Step 1b: Build MST on approximate εNG using Borůvka's algorithm
         std::vector<tableint> component(n);
         for (tableint i = 0; i < n; ++i) component[i] = i;
@@ -2981,12 +2987,14 @@ class MergeHierarchicalNSW : public HierarchicalNSW<dist_t> {
             }
             if (!added) break;
         }
-
+        local_timer_e = std::chrono::high_resolution_clock::now();
         if (print) {
             std::cout << "MST construction completed with " << mst_edges.size() << " edges" << std::endl;
+            std::cout << "MST construction completed in " << std::chrono::duration<double>(local_timer_e - local_timer_s).count() << " seconds" << std::endl;
         }
 
         // ===== Phase 2: Merge y0 into MST (Algorithm 5) =====
+        local_timer_s = std::chrono::high_resolution_clock::now();
         const float* y0_data = (const float*) G2->getDataByInternalId(G2->enterpoint_node_);
 
         std::vector<std::pair<dist_t, tableint>> edges_to_y0;
@@ -3043,7 +3051,14 @@ class MergeHierarchicalNSW : public HierarchicalNSW<dist_t> {
             }
         }
 
+        local_timer_e = std::chrono::high_resolution_clock::now();
+        if (print) {
+            std::cout << "MST merging completed in " << std::chrono::duration<double>(local_timer_e - local_timer_s).count() << " seconds" << std::endl;
+            std::cout << "Number of roots (parallel DFS starting points): " << roots.size() << std::endl;
+        }
+
         // ===== Phase 3: DFS processing with parallelism =====
+        local_timer_s = std::chrono::high_resolution_clock::now();
         std::atomic<size_t> G_cnt{0};
         std::atomic<size_t> L_cnt{0};
         std::atomic<size_t> processed_count{0};
@@ -3121,6 +3136,10 @@ class MergeHierarchicalNSW : public HierarchicalNSW<dist_t> {
                     }
                 }
             }
+        }
+        local_timer_e = std::chrono::high_resolution_clock::now();
+        if (print) {
+            std::cout << "\rSIM merge (optimized) completed in " << std::chrono::duration<double>(local_timer_e - local_timer_s).count() << " seconds" << std::endl;
         }
 
         size_t final_L = L_cnt.load(std::memory_order_relaxed);
