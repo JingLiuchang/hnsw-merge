@@ -2550,16 +2550,17 @@ class MergeHierarchicalNSW : public HierarchicalNSW<dist_t> {
 
         if (print) {
             std::cout << "SIM merge: G" << G1_id << " -> G" << G2_id << std::endl;
+            std::cout << "G " << G1->cur_element_count << " elements, " << G2->cur_element_count << " elements" << std::endl;
         }
 
         // ===== Phase 1: Build MST on approximate εNG of G1 (Algorithm 4 - Borůvka-style) =====
         // Step 1a: Construct approximate εNG using Self_search
-        unsigned ef_for_εNG = 100; // default value
+        unsigned ef_for_εNG = global_ef; // default value
         try {
             ef_for_εNG = parameters.Get<unsigned>("ef_for_εNG");
         } catch (std::invalid_argument&) {}
 
-        bool use_epsilon_filter = false; // default value
+        bool use_epsilon_filter = true; // default value
         try {
             use_epsilon_filter = parameters.Get<bool>("use_epsilon_filter");
         } catch (std::invalid_argument&) {}
@@ -2568,6 +2569,7 @@ class MergeHierarchicalNSW : public HierarchicalNSW<dist_t> {
         try {
             epsilon_threshold = parameters.Get<dist_t>("epsilon_threshold");
         } catch (std::invalid_argument&) {}
+        epsilon_threshold = 1.03f;
 
         if (print) {
             std::cout << "Building approximate εNG with ef=" << ef_for_εNG;
@@ -2581,6 +2583,7 @@ class MergeHierarchicalNSW : public HierarchicalNSW<dist_t> {
         // This is thread-safe because:
         // 1. Self_search is const and uses thread-safe VisitedListPool
         // 2. Each thread writes to different approx_εNG[u]
+        auto local_timer_s = std::chrono::high_resolution_clock::now();
         std::vector<std::vector<std::pair<dist_t, tableint>>> approx_εNG(n);
 
 #pragma omp parallel for schedule(dynamic, 72)
@@ -2606,7 +2609,13 @@ class MergeHierarchicalNSW : public HierarchicalNSW<dist_t> {
             // Sort neighbors by distance for efficient MST construction
             std::sort(approx_εNG[u].begin(), approx_εNG[u].end());
         }
+        auto local_timer_e = std::chrono::high_resolution_clock::now();
+        if (print) {
+            std::chrono::duration<double> local_duration = local_timer_e - local_timer_s;
+            std::cout << "Approximate εNG construction completed in " << local_duration.count() << " seconds" << std::endl;
+        }
 
+        local_timer_s = std::chrono::high_resolution_clock::now();
         // Step 1b: Build MST on approximate εNG using Borůvka's algorithm
         std::vector<tableint> component(n);
         for (tableint i = 0; i < n; ++i) component[i] = i;
@@ -2654,10 +2663,14 @@ class MergeHierarchicalNSW : public HierarchicalNSW<dist_t> {
             if (!added) break;
         }
 
+        local_timer_e = std::chrono::high_resolution_clock::now();
         if (print) {
             std::cout << "MST construction completed with " << mst_edges.size() << " edges" << std::endl;
+            std::chrono::duration<double> local_duration = local_timer_e - local_timer_s;
+            std::cout << "MST construction completed in " << local_duration.count() << " seconds" << std::endl;
         }
 
+        local_timer_s = std::chrono::high_resolution_clock::now();
         // ===== Phase 2: Merge y0 into MST (Algorithm 5) =====
         const float* y0_data = (const float*) G2->getDataByInternalId(G2->enterpoint_node_);
 
@@ -2715,10 +2728,19 @@ class MergeHierarchicalNSW : public HierarchicalNSW<dist_t> {
             }
         }
 
+        local_timer_e = std::chrono::high_resolution_clock::now();
+        if (print) {
+            std::chrono::duration<double> local_duration = local_timer_e - local_timer_s;
+            std::cout << "MST merging completed in " << local_duration.count() << " seconds" << std::endl;
+            std::cout << "Number of roots (parallel DFS starting points): " << roots.size() << std::endl;
+        }
+
         // ===== Phase 3: DFS processing with parallelism =====
         std::atomic<size_t> G_cnt{0};
         std::atomic<size_t> L_cnt{0};
         std::atomic<size_t> processed_count{0};
+
+        local_timer_s = std::chrono::high_resolution_clock::now();
 
 #pragma omp parallel for schedule(dynamic)
         for (size_t r = 0; r < roots.size(); ++r) {
@@ -2796,6 +2818,11 @@ class MergeHierarchicalNSW : public HierarchicalNSW<dist_t> {
                     }
                 }
             }
+        }
+        local_timer_e = std::chrono::high_resolution_clock::now();
+        if (print) {
+            std::chrono::duration<double> local_duration = local_timer_e - local_timer_s;
+            std::cout << "\rSIM merge completed in " << local_duration.count() << " seconds" << std::endl;
         }
 
         size_t final_L = L_cnt.load(std::memory_order_relaxed);

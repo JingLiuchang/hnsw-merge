@@ -41,6 +41,11 @@ for db in "${datasets[@]}"; do
       sub_M=30
     elif [ "$db" == "deep10m" ]; then
       ef=300
+      M=64
+      sub_ef=300
+      sub_M=64
+    elif [ "$db" == "msmarc10m" ]; then
+      ef=300
       M=30
       sub_ef=300
       sub_M=30

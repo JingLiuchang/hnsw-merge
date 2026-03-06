@@ -67,7 +67,6 @@ for T in "${Ts[@]}"; do # 并行测试
       sub_M=30
       PARAMS=(
               "60 10 3"
-              "60 10 5"
             )
     elif [ "$db" == "msmarc10m" ]; then
       ef=50
@@ -76,27 +75,26 @@ for T in "${Ts[@]}"; do # 并行测试
       sub_M=30
       PARAMS=(
               "50 10 3"
-              "50 10 5"
             )
     else
       echo "Unknown dataset: $db"
       exit 1
     fi
 
-    EXECUTABLE="/home/jlc/hnsw-merge/cmake-build-debug/test_RGTM_merge"
+    EXECUTABLE="/home/jlc/hnsw-merge/cmake-build-debug/test_SIM_merge"
     DATA_FILE="/mnt/ssd/merge_bench/${db}/random/bi-index-data/${db}_random_base.fvecs"
     GRAPH_INDEX_FILE="/mnt/ssd/merge_bench/${db}/random/bi-index-merged/${db}_randomP"
-    MERGED_NSG_PATH="/mnt/ssd/merge_bench/${db}/random/bi-index-merged/${db}_random_RGTM"
+    MERGED_NSG_PATH="/mnt/ssd/merge_bench/${db}/random/bi-index-merged/${db}_random_SIM"
 
     ET=0
     RATIO=1.0
 
     # Log file to store outputs
-    # LOG_FILE="/mnt/ssd/merge_bench/${db}/random/logs/RGTM_merge.log"
+    # LOG_FILE="/mnt/ssd/merge_bench/${db}/random/logs/SIM_merge.log"
   #  mkdir -p "/home/jlc/pg-fast-merging/performance/${db}/"
-  #  LOG_FILE="/home/jlc/pg-fast-merging/performance/${db}/RGTM_merge.log"
+  #  LOG_FILE="/home/jlc/pg-fast-merging/performance/${db}/SIM_merge.log"
     mkdir -p "/home/jlc/hnsw-merge/logs/${db}/"
-    LOG_FILE="/home/jlc/hnsw-merge/logs/${db}/RGTM_merge.log"
+    LOG_FILE="/home/jlc/hnsw-merge/logs/${db}/SIM_merge.log"
 
     morder="pairwise"
 
@@ -107,10 +105,10 @@ for T in "${Ts[@]}"; do # 并行测试
     for param in "${PARAMS[@]}"; do
       read -r G L S <<< "$param"
 
-      OUTPUT_FILE="${MERGED_NSG_PATH}_et${ET}_ef${G}_${L}_${S}_M${M}.hnsw"
+      OUTPUT_FILE="${MERGED_NSG_PATH}_et${ET}_ef${G}_${L}_M${M}.hnsw"
 
-      echo "$EXECUTABLE $DATA_FILE $G $L $S ${M} ${sub_ef} ${sub_M} 2 $GRAPH_INDEX_FILE $OUTPUT_FILE $ET $RATIO $morder $T"
-      $EXECUTABLE $DATA_FILE $G $L $S ${M} ${sub_ef} ${sub_M} 2 $GRAPH_INDEX_FILE $OUTPUT_FILE $ET $RATIO $morder $T 2>&1 | tee -a "$LOG_FILE"
+      echo "$EXECUTABLE $DATA_FILE $G $L $M ${sub_ef} ${sub_M} 2 $GRAPH_INDEX_FILE $OUTPUT_FILE $morder $T"
+      $EXECUTABLE $DATA_FILE $G $L $M ${sub_ef} ${sub_M} 2 $GRAPH_INDEX_FILE $OUTPUT_FILE $morder $T 2>&1 | tee -a "$LOG_FILE"
     done
 
     NGM_EXECUTABLE="/home/jlc/hnsw-merge/cmake-build-debug/test_NGM_merge"
