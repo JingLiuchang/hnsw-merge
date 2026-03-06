@@ -2552,7 +2552,62 @@ class MergeHierarchicalNSW : public HierarchicalNSW<dist_t> {
             std::cout << "SIM merge: G" << G1_id << " -> G" << G2_id << std::endl;
         }
 
-        // ===== Phase 1: Build MST on G1 (Algorithm 4 - Borůvka-style) =====
+        // ===== Phase 1: Build MST on approximate εNG of G1 (Algorithm 4 - Borůvka-style) =====
+        // Step 1a: Construct approximate εNG using Self_search
+        unsigned ef_for_εNG = 100; // default value
+        try {
+            ef_for_εNG = parameters.Get<unsigned>("ef_for_εNG");
+        } catch (std::invalid_argument&) {}
+
+        bool use_epsilon_filter = false; // default value
+        try {
+            use_epsilon_filter = parameters.Get<bool>("use_epsilon_filter");
+        } catch (std::invalid_argument&) {}
+
+        dist_t epsilon_threshold = std::numeric_limits<dist_t>::max(); // default value
+        try {
+            epsilon_threshold = parameters.Get<dist_t>("epsilon_threshold");
+        } catch (std::invalid_argument&) {}
+
+        if (print) {
+            std::cout << "Building approximate εNG with ef=" << ef_for_εNG;
+            if (use_epsilon_filter) {
+                std::cout << ", ε=" << epsilon_threshold;
+            }
+            std::cout << std::endl;
+        }
+
+        // Build approximate εNG: for each node, use Self_search to get more neighbors
+        // This is thread-safe because:
+        // 1. Self_search is const and uses thread-safe VisitedListPool
+        // 2. Each thread writes to different approx_εNG[u]
+        std::vector<std::vector<std::pair<dist_t, tableint>>> approx_εNG(n);
+
+#pragma omp parallel for schedule(dynamic, 72)
+        for (tableint u = 0; u < n; ++u) {
+            float* u_data = (float*) G1->getDataByInternalId(u);
+            auto candidates = G1->Self_search(u_data, ef_for_εNG, u);
+
+            while (!candidates.empty()) {
+                auto candidate = candidates.top();
+                candidates.pop();
+                tableint v = candidate.second;
+                dist_t dist = candidate.first;
+
+                // Skip self-loop (distance should be 0 for self)
+                if (v == u) continue;
+
+                // Optional: filter by epsilon threshold
+                if (use_epsilon_filter && dist > epsilon_threshold) continue;
+
+                approx_εNG[u].push_back({dist, v});
+            }
+
+            // Sort neighbors by distance for efficient MST construction
+            std::sort(approx_εNG[u].begin(), approx_εNG[u].end());
+        }
+
+        // Step 1b: Build MST on approximate εNG using Borůvka's algorithm
         std::vector<tableint> component(n);
         for (tableint i = 0; i < n; ++i) component[i] = i;
 
@@ -2567,25 +2622,20 @@ class MergeHierarchicalNSW : public HierarchicalNSW<dist_t> {
         };
 
         std::vector<std::pair<tableint, tableint>> mst_edges;
-        std::vector<tableint> next_nbr(n, 0);
+        std::vector<size_t> next_nbr(n, 0);
 
         while (mst_edges.size() < n - 1) {
             std::vector<std::tuple<dist_t, tableint, tableint>> min_edge(n, {std::numeric_limits<dist_t>::max(), (tableint)-1, (tableint)-1});
 
             for (tableint u = 0; u < n; ++u) {
                 tableint cu = find(u);
-                linklistsizeint* ll = G1->get_linklist0(u);
-                unsigned short int nbr_count = G1->getListCount(ll);
-                tableint* neighbors = (tableint*)(ll + 1);
 
-                for (unsigned k = next_nbr[u]; k < nbr_count; ++k) {
-                    tableint v = neighbors[k];
+                // Iterate through neighbors in approximate εNG
+                for (size_t k = next_nbr[u]; k < approx_εNG[u].size(); ++k) {
+                    auto [dist, v] = approx_εNG[u][k];
                     if (find(v) != cu) {
-                        float* u_data = (float*) G1->getDataByInternalId(u);
-                        float* v_data = (float*) G1->getDataByInternalId(v);
-                        dist_t d = fstdistfunc_(u_data, v_data, dist_func_param_);
-                        if (d < std::get<0>(min_edge[cu])) {
-                            min_edge[cu] = {d, u, v};
+                        if (dist < std::get<0>(min_edge[cu])) {
+                            min_edge[cu] = {dist, u, v};
                         }
                         break;
                     }
@@ -2602,6 +2652,10 @@ class MergeHierarchicalNSW : public HierarchicalNSW<dist_t> {
                 }
             }
             if (!added) break;
+        }
+
+        if (print) {
+            std::cout << "MST construction completed with " << mst_edges.size() << " edges" << std::endl;
         }
 
         // ===== Phase 2: Merge y0 into MST (Algorithm 5) =====
