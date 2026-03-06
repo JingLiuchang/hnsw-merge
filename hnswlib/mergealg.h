@@ -1773,6 +1773,12 @@ class MergeHierarchicalNSW : public HierarchicalNSW<dist_t> {
                 SIM_merge_into_later(graphs, p.first, p.second, parameters); // first merge into second
             }
         }
+        else if (method == "SIM_optimized")
+        {
+            for (auto&& p : merge_order) { // pairwise merge
+                SIM_merge_into_later_optimized(graphs, p.first, p.second, parameters); // first merge into second
+            }
+        }
         else
         {
             std::cerr << "Error: unknown method " << method << std::endl;
@@ -2828,6 +2834,298 @@ class MergeHierarchicalNSW : public HierarchicalNSW<dist_t> {
         size_t final_L = L_cnt.load(std::memory_order_relaxed);
         size_t final_G = G_cnt.load(std::memory_order_relaxed);
         std::cout << "\rSIM merge completed: 100%" << std::endl;
+        std::cout << "L : G = " << final_L << " : " << final_G << " = " << (final_G > 0 ? (float)final_L/final_G : 0.0f) << std::endl;
+    }
+
+    void SIM_merge_into_later_optimized(std::vector<HierarchicalNSW<dist_t>*> graphs, unsigned G1_id, unsigned G2_id, const Parameters &parameters)
+    {
+        HierarchicalNSW<dist_t>* G1 = graphs[G1_id];
+        HierarchicalNSW<dist_t>* G2 = graphs[G2_id];
+        bool print = parameters.Get<bool>("print");
+
+        unsigned global_ef = ef_construction_;
+        unsigned local_ef = parameters.Get<unsigned>("local_ef");
+
+        size_t n = G1->cur_element_count;
+
+        if (print) {
+            std::cout << "SIM merge (optimized): G" << G1_id << " -> G" << G2_id << std::endl;
+        }
+
+        // ===== Phase 1: Build MST on approximate εNG of G1 (Algorithm 4 - Borůvka-style) =====
+        // Step 1a: Construct approximate εNG by considering both in-neighbors and out-neighbors
+        bool use_epsilon_filter = false;
+        try {
+            use_epsilon_filter = parameters.Get<bool>("use_epsilon_filter");
+        } catch (std::invalid_argument&) {}
+
+        dist_t epsilon_threshold = std::numeric_limits<dist_t>::max();
+        try {
+            epsilon_threshold = parameters.Get<dist_t>("epsilon_threshold");
+        } catch (std::invalid_argument&) {}
+
+        if (print) {
+            std::cout << "Building approximate εNG using in/out-neighbors";
+            if (use_epsilon_filter) {
+                std::cout << ", ε=" << epsilon_threshold;
+            }
+            std::cout << std::endl;
+        }
+
+        // Build approximate εNG: for each node, collect both out-neighbors and in-neighbors
+        // This directly follows the paper's recommendation:
+        // "an approximate εNG can be constructed based on the proximity graphs by
+        //  considering both in-neighbors and out-neighbors for each node"
+        std::vector<std::unordered_set<tableint>> neighbor_sets(n);
+
+        // Step 1: Collect out-neighbors (edges u -> v)
+        for (tableint u = 0; u < n; ++u) {
+            linklistsizeint* ll = G1->get_linklist0(u);
+            unsigned short int nbr_count = G1->getListCount(ll);
+            tableint* neighbors = (tableint*)(ll + 1);
+
+            for (unsigned k = 0; k < nbr_count; ++k) {
+                tableint v = neighbors[k];
+                neighbor_sets[u].insert(v);
+            }
+        }
+
+        // Step 2: Add in-neighbors (if u -> v exists, add v to u's neighbor set as in-neighbor)
+        for (tableint u = 0; u < n; ++u) {
+            linklistsizeint* ll = G1->get_linklist0(u);
+            unsigned short int nbr_count = G1->getListCount(ll);
+            tableint* neighbors = (tableint*)(ll + 1);
+
+            for (unsigned k = 0; k < nbr_count; ++k) {
+                tableint v = neighbors[k];
+                // u -> v exists, so add u as in-neighbor of v
+                neighbor_sets[v].insert(u);
+            }
+        }
+
+        // Step 3: Convert to sorted adjacency list with distances
+        std::vector<std::vector<std::pair<dist_t, tableint>>> approx_εNG(n);
+
+#pragma omp parallel for schedule(dynamic, 64)
+        for (tableint u = 0; u < n; ++u) {
+            float* u_data = (float*) G1->getDataByInternalId(u);
+
+            for (tableint v : neighbor_sets[u]) {
+                if (v == u) continue; // Skip self-loop
+
+                float* v_data = (float*) G1->getDataByInternalId(v);
+                dist_t dist = fstdistfunc_(u_data, v_data, dist_func_param_);
+
+                // Optional: filter by epsilon threshold
+                if (use_epsilon_filter && dist > epsilon_threshold) continue;
+
+                approx_εNG[u].push_back({dist, v});
+            }
+
+            // Sort neighbors by distance for efficient MST construction
+            std::sort(approx_εNG[u].begin(), approx_εNG[u].end());
+        }
+
+        if (print) {
+            size_t total_edges = 0;
+            for (const auto& neighbors : approx_εNG) {
+                total_edges += neighbors.size();
+            }
+            std::cout << "εNG constructed with " << total_edges << " total edges, avg degree: "
+                      << (double)total_edges / n << std::endl;
+        }
+
+        // Step 1b: Build MST on approximate εNG using Borůvka's algorithm
+        std::vector<tableint> component(n);
+        for (tableint i = 0; i < n; ++i) component[i] = i;
+
+        std::function<tableint(tableint)> find = [&](tableint x) {
+            return component[x] == x ? x : component[x] = find(component[x]);
+        };
+
+        auto unite = [&](tableint x, tableint y) {
+            x = find(x); y = find(y);
+            if (x != y) { component[x] = y; return true; }
+            return false;
+        };
+
+        std::vector<std::pair<tableint, tableint>> mst_edges;
+        std::vector<size_t> next_nbr(n, 0);
+
+        while (mst_edges.size() < n - 1) {
+            std::vector<std::tuple<dist_t, tableint, tableint>> min_edge(n, {std::numeric_limits<dist_t>::max(), (tableint)-1, (tableint)-1});
+
+            for (tableint u = 0; u < n; ++u) {
+                tableint cu = find(u);
+
+                // Iterate through neighbors in approximate εNG
+                for (size_t k = next_nbr[u]; k < approx_εNG[u].size(); ++k) {
+                    auto [dist, v] = approx_εNG[u][k];
+                    if (find(v) != cu) {
+                        if (dist < std::get<0>(min_edge[cu])) {
+                            min_edge[cu] = {dist, u, v};
+                        }
+                        break;
+                    }
+                    next_nbr[u]++;
+                }
+            }
+
+            bool added = false;
+            for (tableint c = 0; c < n; ++c) {
+                auto [d, u, v] = min_edge[c];
+                if (u != (tableint)-1 && unite(u, v)) {
+                    mst_edges.push_back({u, v});
+                    added = true;
+                }
+            }
+            if (!added) break;
+        }
+
+        if (print) {
+            std::cout << "MST construction completed with " << mst_edges.size() << " edges" << std::endl;
+        }
+
+        // ===== Phase 2: Merge y0 into MST (Algorithm 5) =====
+        const float* y0_data = (const float*) G2->getDataByInternalId(G2->enterpoint_node_);
+
+        std::vector<std::pair<dist_t, tableint>> edges_to_y0;
+        for (tableint i = 0; i < n; ++i) {
+            float* node_data = (float*) G1->getDataByInternalId(i);
+            edges_to_y0.push_back({fstdistfunc_(node_data, y0_data, dist_func_param_), i});
+        }
+        std::sort(edges_to_y0.begin(), edges_to_y0.end());
+
+        // Compute MST edge weights and sort by ascending weight
+        std::vector<std::tuple<dist_t, tableint, tableint>> sorted_mst_edges;
+        sorted_mst_edges.reserve(mst_edges.size());
+        for (auto& e : mst_edges) {
+            float* u_data = (float*) G1->getDataByInternalId(e.first);
+            float* v_data = (float*) G1->getDataByInternalId(e.second);
+            sorted_mst_edges.push_back({fstdistfunc_(u_data, v_data, dist_func_param_), e.first, e.second});
+        }
+        std::sort(sorted_mst_edges.begin(), sorted_mst_edges.end());
+
+        component.resize(n + 1);
+        for (tableint i = 0; i <= n; ++i) component[i] = i;
+        tableint y0_comp = n;
+
+        std::vector<tableint> mst_parent(n, n);
+        size_t y0_idx = 0, mst_idx = 0;
+
+        while (y0_idx < n || mst_idx < sorted_mst_edges.size()) {
+            dist_t d_y0 = (y0_idx < n) ? edges_to_y0[y0_idx].first : std::numeric_limits<dist_t>::max();
+            dist_t d_mst = (mst_idx < sorted_mst_edges.size()) ? std::get<0>(sorted_mst_edges[mst_idx]) : std::numeric_limits<dist_t>::max();
+
+            if (d_y0 <= d_mst && y0_idx < n) {
+                tableint node = edges_to_y0[y0_idx].second;
+                if (unite(node, y0_comp)) {
+                    mst_parent[node] = n;
+                }
+                y0_idx++;
+            } else if (mst_idx < sorted_mst_edges.size()) {
+                tableint u = std::get<1>(sorted_mst_edges[mst_idx]);
+                tableint v = std::get<2>(sorted_mst_edges[mst_idx]);
+                if (unite(u, v)) {
+                    mst_parent[v] = u;
+                }
+                mst_idx++;
+            }
+        }
+
+        std::vector<std::vector<tableint>> children(n);
+        std::vector<tableint> roots;
+        for (tableint i = 0; i < n; ++i) {
+            if (mst_parent[i] == n) {
+                roots.push_back(i);
+            } else {
+                children[mst_parent[i]].push_back(i);
+            }
+        }
+
+        // ===== Phase 3: DFS processing with parallelism =====
+        std::atomic<size_t> G_cnt{0};
+        std::atomic<size_t> L_cnt{0};
+        std::atomic<size_t> processed_count{0};
+
+#pragma omp parallel for schedule(dynamic)
+        for (size_t r = 0; r < roots.size(); ++r) {
+            using results_ptr = std::shared_ptr<std::vector<tableint>>;
+            struct dfs_entry {
+                tableint node;
+                results_ptr parent_results;
+            };
+
+            std::stack<dfs_entry> stk;
+            stk.push({roots[r], nullptr});
+
+            while (!stk.empty()) {
+                auto [node_id, parent_res] = stk.top();
+                stk.pop();
+
+                float* node_data = (float*) G1->getDataByInternalId(node_id);
+                tableint merged_node_id = node_id + globalid_offset[G1_id];
+
+                std::priority_queue<std::pair<dist_t, tableint>, std::vector<std::pair<dist_t, tableint>>, CompareByFirst> top_candidates;
+                auto current_results = std::make_shared<std::vector<tableint>>();
+
+                if (parent_res == nullptr) {
+                    // Root node: Global (Naive) search
+                    std::priority_queue<std::pair<dist_t, tableint>, std::vector<std::pair<dist_t, tableint>>, typename HierarchicalNSW<float>::CompareByFirst>
+                        temp_candidates = G2->Global_merge(node_data, global_ef);
+
+                    while (!temp_candidates.empty()) {
+                        auto candidate = temp_candidates.top();
+                        temp_candidates.pop();
+                        current_results->push_back(candidate.second);
+                        top_candidates.push({candidate.first, candidate.second + globalid_offset[G2_id]});
+                    }
+
+                    G_cnt.fetch_add(1, std::memory_order_relaxed);
+                } else {
+                    // Non-root node: Local sliding from parent's results
+                    std::priority_queue<std::pair<dist_t, tableint>, std::vector<std::pair<dist_t, tableint>>, typename HierarchicalNSW<float>::CompareByFirst>
+                        temp_candidates = G2->Local_merge(node_data, local_ef, *parent_res);
+
+                    while (!temp_candidates.empty()) {
+                        auto candidate = temp_candidates.top();
+                        temp_candidates.pop();
+                        current_results->push_back(candidate.second);
+                        top_candidates.push({candidate.first, candidate.second + globalid_offset[G2_id]});
+                    }
+
+                    L_cnt.fetch_add(1, std::memory_order_relaxed);
+                }
+
+                // Add original neighbors from merged graph
+                linklistsizeint* element_data = get_linklist0(merged_node_id);
+                unsigned short int neighbor_count = getListCount(element_data);
+                for (unsigned k = 0; k < neighbor_count; ++k) {
+                    tableint neighbor_internalid = *((tableint*)(element_data + 1) + k);
+                    top_candidates.push({fstdistfunc_(node_data, getDataByInternalId(neighbor_internalid), dist_func_param_), neighbor_internalid});
+                }
+
+                Pruning_InterInsert(node_data, merged_node_id, top_candidates, 0);
+
+                // Push children onto DFS stack
+                for (tableint child : children[node_id]) {
+                    stk.push({child, current_results});
+                }
+
+                // Progress reporting
+                size_t cnt = processed_count.fetch_add(1, std::memory_order_relaxed) + 1;
+                if (print && cnt % 10000 == 0) {
+#pragma omp critical
+                    {
+                        std::cout << "\rSIM merged " << 100 * cnt / n << " %..." << std::flush;
+                    }
+                }
+            }
+        }
+
+        size_t final_L = L_cnt.load(std::memory_order_relaxed);
+        size_t final_G = G_cnt.load(std::memory_order_relaxed);
+        std::cout << "\rSIM merge (optimized) completed: 100%" << std::endl;
         std::cout << "L : G = " << final_L << " : " << final_G << " = " << (final_G > 0 ? (float)final_L/final_G : 0.0f) << std::endl;
     }
 

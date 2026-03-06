@@ -261,8 +261,8 @@ if __name__ == "__main__":
 
     print("shape of indices:", indices.shape)
     print("shape of distances:", distances.shape)
-    print(indices[0][:10])
     print(distances[0][:10])
+    print(distances[0][90:100])
 
     utils.ivecs_write(gt_file, indices)
     utils.fvecs_write(dist_file, distances)
