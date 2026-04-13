@@ -18,4 +18,4 @@ conda activate myenv
 datasets=("deep10m")
 partition_methods=("random")
 ms=(2)
-Ts=(32 16 8 4 2 1)
+Ts=(1)

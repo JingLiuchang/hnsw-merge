@@ -49,6 +49,16 @@ for db in "${datasets[@]}"; do
       M=30
       sub_ef=300
       sub_M=30
+    elif [ "$db" == "imagenet10m" ]; then
+      ef=300
+      M=30
+      sub_ef=300
+      sub_M=30
+    elif [ "$db" == "anton10m" ]; then
+      ef=300
+      M=30
+      sub_ef=300
+      sub_M=30
     else
       echo "Unknown dataset: $db"
       exit 1

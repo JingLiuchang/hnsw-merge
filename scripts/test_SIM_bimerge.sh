@@ -76,6 +76,22 @@ for T in "${Ts[@]}"; do # 并行测试
       PARAMS=(
               "50 10 3"
             )
+    elif [ "$db" == "imagenet10m" ]; then
+      ef=50
+      M=30
+      sub_ef=300
+      sub_M=30
+      PARAMS=(
+              "50 10 3"
+            )
+    elif [ "$db" == "anton10m" ]; then
+      ef=40
+      M=30
+      sub_ef=300
+      sub_M=30
+      PARAMS=(
+            "40 10 3"
+            )
     else
       echo "Unknown dataset: $db"
       exit 1
@@ -105,7 +121,7 @@ for T in "${Ts[@]}"; do # 并行测试
     for param in "${PARAMS[@]}"; do
       read -r G L S <<< "$param"
 
-      OUTPUT_FILE="${MERGED_NSG_PATH}_et${ET}_ef${G}_${L}_M${M}.hnsw"
+      OUTPUT_FILE="${MERGED_NSG_PATH}_et${ET}_ef${G}_${L}_M${M}_e0.54.hnsw"
 
       echo "$EXECUTABLE $DATA_FILE $G $L $M ${sub_ef} ${sub_M} 2 $GRAPH_INDEX_FILE $OUTPUT_FILE $morder $T"
       $EXECUTABLE $DATA_FILE $G $L $M ${sub_ef} ${sub_M} 2 $GRAPH_INDEX_FILE $OUTPUT_FILE $morder $T 2>&1 | tee -a "$LOG_FILE"

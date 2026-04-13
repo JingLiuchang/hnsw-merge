@@ -58,6 +58,38 @@ for db in "${datasets[@]}"; do
         PARAMS=(
           "40 10 3"
         )
+    elif [ "$db" == "deep10m" ]; then
+      ef=60
+      M=30
+      sub_ef=300
+      sub_M=30
+      PARAMS=(
+              "60 30 3"
+            )
+    elif [ "$db" == "msmarc10m" ]; then
+      ef=50
+      M=30
+      sub_ef=300
+      sub_M=30
+      PARAMS=(
+              "50 10 3"
+            )
+    elif [ "$db" == "imagenet10m" ]; then
+      ef=50
+      M=30
+      sub_ef=300
+      sub_M=30
+      PARAMS=(
+              "50 10 3"
+            )
+    elif [ "$db" == "anton10m" ]; then
+      ef=40
+      M=30
+      sub_ef=300
+      sub_M=30
+      PARAMS=(
+            "40 10 3"
+            )
     else
       echo "Unknown dataset: $db"
       exit 1
@@ -84,14 +116,15 @@ for db in "${datasets[@]}"; do
 
     # Construct the input HNSW graph file name and output CSV file name
     GRAPH_INDEX_FILE="${MERGED_NSG_PATH}_et0_ef${G}_${L}_${S}_M${M}.hnsw"
-#    PERFORMANCE_CSV="${OUTPUT_PATH}/K${K}/${db}_random_RGTM_et0_ef${G}_${L}_${S}_M${M}_K${K}.csv"
-    PERFORMANCE_CSV="${OUTPUT_PATH}/K${K}/tmp.csv"
+    PERFORMANCE_CSV="${OUTPUT_PATH}/K${K}/${db}_random_RGTM_et0_ef${G}_${L}_${S}_M${M}_K${K}.csv"
+    mkdir -p "${OUTPUT_PATH}/K${K}/"
+#    PERFORMANCE_CSV="${OUTPUT_PATH}/K${K}/tmp.csv"
 
     # Run the search command
     # echo "Running: $EXECUTABLE $DATA_FILE $QUERY_FILE $GT_FILE $GRAPH_INDEX_FILE $K $MIN_EF $MAX_EF $STEPSIZE $PERFORMANCE_CSV"
     $EXECUTABLE $DATA_FILE $QUERY_FILE $GT_FILE $GRAPH_INDEX_FILE $K $MIN_EF $MAX_EF $STEPSIZE $PERFORMANCE_CSV
-    mkdir -p "/home/jlc/pg-fast-merging/performance/${db}/"
-    cp $PERFORMANCE_CSV "/home/jlc/pg-fast-merging/performance/${db}/"
+#    mkdir -p "/home/jlc/pg-fast-merging/performance/${db}/"
+#    cp $PERFORMANCE_CSV "/home/jlc/pg-fast-merging/performance/${db}/"
   done
 
 #  NGM_GRAPH_INDEX_FILE="/mnt/ssd/merge_bench/${db}/random/bi-index-merged/${db}_random_NGM_et0_ef${ef}_M${M}.hnsw"

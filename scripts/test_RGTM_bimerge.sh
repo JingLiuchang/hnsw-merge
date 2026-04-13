@@ -66,8 +66,7 @@ for T in "${Ts[@]}"; do # 并行测试
       sub_ef=300
       sub_M=30
       PARAMS=(
-              "60 10 3"
-              "60 10 5"
+              "60 30 3"
             )
     elif [ "$db" == "msmarc10m" ]; then
       ef=50
@@ -76,7 +75,22 @@ for T in "${Ts[@]}"; do # 并行测试
       sub_M=30
       PARAMS=(
               "50 10 3"
-              "50 10 5"
+            )
+    elif [ "$db" == "imagenet10m" ]; then
+      ef=50
+      M=30
+      sub_ef=300
+      sub_M=30
+      PARAMS=(
+              "50 10 3"
+            )
+    elif [ "$db" == "anton10m" ]; then
+      ef=40
+      M=30
+      sub_ef=300
+      sub_M=30
+      PARAMS=(
+            "40 10 3"
             )
     else
       echo "Unknown dataset: $db"

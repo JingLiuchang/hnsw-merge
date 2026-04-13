@@ -17,7 +17,7 @@ int main(int argc, char** argv) {
 
     float* data = NULL;
     int max_elements, dim;
-    load_data(argv[1], data, max_elements, dim);
+    safe_load_data(argv[1], data, max_elements, dim);
     int ef_construction = atoi(argv[2]);
     int local_ef = atoi(argv[3]);
     int M = atoi(argv[4]);
@@ -42,8 +42,8 @@ int main(int argc, char** argv) {
     params.Set<std::string>("merge_order_selection", merge_order);
     params.Set<std::string>("merge_order_file", merge_order_file);
     params.Set<bool>("use_epsilon_filter", true);
-    params.Set<float>("epsilon_threshold", 1.03);
-    params.Set<bool>("print", false);
+    params.Set<float>("epsilon_threshold", 0.54);
+    params.Set<bool>("print", true);
 
     // if (params.Get<bool>("print")) {
     //     std::cout << "parameters: " << std::endl;

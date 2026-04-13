@@ -2014,9 +2014,12 @@ class MergeHierarchicalNSW : public HierarchicalNSW<dist_t> {
 
     std::vector<block_info> construct_blocks(HierarchicalNSW<dist_t>* G, const Parameters &parameters)
     {
+        auto local_timer_s = std::chrono::high_resolution_clock::now();
+        auto local_timer_e = std::chrono::high_resolution_clock::now();
         unsigned self_ef = parameters.Get<unsigned>("self_ef");
 
         // step1 get kNN
+        local_timer_s = std::chrono::high_resolution_clock::now();
         std::vector<std::vector<tableint>> Nks;
         Nks.resize(G->cur_element_count);
 #pragma omp parallel for schedule(dynamic, 72)
@@ -2032,8 +2035,15 @@ class MergeHierarchicalNSW : public HierarchicalNSW<dist_t> {
                 temp_candidates.pop();
             }
         }
+        local_timer_e = std::chrono::high_resolution_clock::now();
+
+         if (parameters.Get<bool>("print")) {
+            std::chrono::duration<double> local_duration = local_timer_e - local_timer_s;
+            std::cout << "Block_Construction Breakdown: kNN search time: " << local_duration.count() << " seconds." << std::endl;
+        }
 
         // step2 construct reverse NN
+        local_timer_s = std::chrono::high_resolution_clock::now();
         std::vector<reverseNN_info> Rks;
         Rks.resize(G->cur_element_count);
         std::vector<std::mutex> rks_mutexes(G->cur_element_count);  // 每个点一个独立的锁
@@ -2050,8 +2060,14 @@ class MergeHierarchicalNSW : public HierarchicalNSW<dist_t> {
                 Rks[neighbor_id].length++;
             }
         }
+        local_timer_e = std::chrono::high_resolution_clock::now();
+         if (parameters.Get<bool>("print")) {
+            std::chrono::duration<double> local_duration = local_timer_e - local_timer_s;
+            std::cout << "Block_Construction Breakdown: reverse NN construction time: " << local_duration.count() << " seconds." << std::endl;
+        }
 
         // step3 sort Rks by size
+        local_timer_s = std::chrono::high_resolution_clock::now();
         tbb::parallel_sort(Rks.begin(), Rks.end(),
                                  [](const reverseNN_info& a, const reverseNN_info& b) {
                                      return a.length > b.length;
@@ -2078,12 +2094,91 @@ class MergeHierarchicalNSW : public HierarchicalNSW<dist_t> {
 
             blocks.push_back(block_info(bid, bmembers));
         }
+        local_timer_e = std::chrono::high_resolution_clock::now();
+         if (parameters.Get<bool>("print")) {
+            std::chrono::duration<double> local_duration = local_timer_e - local_timer_s;
+            std::cout << "Block_Construction Breakdown: blocking time: " << local_duration.count() << " seconds." << std::endl;
+        }
+
+        return blocks;
+    }
+
+    // Greedy dominating set construction: dynamically updates marginal gain after each center selection
+    std::vector<block_info> greedy_construct_blocks(HierarchicalNSW<dist_t>* G, const Parameters &parameters)
+    {
+        unsigned self_ef = parameters.Get<unsigned>("self_ef");
+
+        // step1 get kNN (same as construct_blocks)
+        std::vector<std::vector<tableint>> Nks(G->cur_element_count);
+#pragma omp parallel for schedule(dynamic, 72)
+        for (tableint i = 0; i < G->cur_element_count; ++i) {
+            float* data_point = (float*) G->getDataByInternalId(i);
+            auto temp = G->Self_search(data_point, self_ef, i);
+            while (!temp.empty()) { Nks[i].push_back(temp.top().second); temp.pop(); }
+        }
+
+        // step2 construct reverse NN (same as construct_blocks)
+        std::vector<reverseNN_info> Rks(G->cur_element_count);
+        std::vector<std::mutex> rks_mutexes(G->cur_element_count);
+        for (tableint i = 0; i < G->cur_element_count; ++i) Rks[i] = reverseNN_info(i);
+#pragma omp parallel for schedule(dynamic, 72)
+        for (tableint i = 0; i < G->cur_element_count; ++i) {
+            for (tableint nb : Nks[i]) {
+                std::lock_guard<std::mutex> lock(rks_mutexes[nb]);
+                Rks[nb].rNNs.push_back(i);
+                Rks[nb].length++;
+            }
+        }
+
+        // step3 greedy dominating set with dynamic marginal gain
+        // marginal_gain[i] = number of uncovered nodes that i can cover (itself + its RNNs)
+        std::vector<unsigned> marginal_gain(G->cur_element_count);
+        for (tableint i = 0; i < G->cur_element_count; ++i)
+            marginal_gain[i] = 1 + Rks[i].length; // self + rNNs
+
+        // max-heap: (gain, id)
+        std::priority_queue<std::pair<unsigned, tableint>> pq;
+        for (tableint i = 0; i < G->cur_element_count; ++i)
+            pq.push({marginal_gain[i], i});
+
+        std::vector<unsigned> covered(G->cur_element_count, 0);
+        std::vector<block_info> blocks;
+
+        while (!pq.empty()) {
+            auto [gain, bid] = pq.top(); pq.pop();
+
+            if (covered[bid]) continue;
+
+            // lazy evaluation: recompute actual marginal gain
+            unsigned actual_gain = covered[bid] ? 0 : 1;
+            for (tableint c : Rks[bid].rNNs)
+                if (!covered[c]) actual_gain++;
+
+            // if stale, reinsert with updated gain
+            if (actual_gain < gain) {
+                pq.push({actual_gain, bid});
+                continue;
+            }
+
+            // select bid as center
+            covered[bid] = 1;
+            std::vector<tableint> bmembers;
+            for (tableint c : Rks[bid].rNNs) {
+                if (!covered[c]) {
+                    covered[c] = 1;
+                    bmembers.push_back(c);
+                }
+            }
+            blocks.push_back(block_info(bid, std::move(bmembers)));
+        }
 
         return blocks;
     }
 
     void RGTM_merge_into_later(std::vector<HierarchicalNSW<dist_t>*> graphs, unsigned G1_id, unsigned G2_id, const Parameters &parameters)
     {
+        auto local_timer_s = std::chrono::high_resolution_clock::now();
+        auto local_timer_e = std::chrono::high_resolution_clock::now();
         HierarchicalNSW<dist_t>* G1 = graphs[G1_id];
         HierarchicalNSW<dist_t>* G2 = graphs[G2_id];
         bool print = parameters.Get<bool>("print");
@@ -2102,9 +2197,14 @@ class MergeHierarchicalNSW : public HierarchicalNSW<dist_t> {
         std::atomic<size_t> total_hits{0};
         std::atomic<bool> should_terminate{false};
 
-        auto blocks = construct_blocks(G1, parameters);
+        local_timer_s = std::chrono::high_resolution_clock::now();
+        // auto blocks = construct_blocks(G1, parameters);
+        auto blocks = greedy_construct_blocks(G1, parameters);
+        local_timer_e = std::chrono::high_resolution_clock::now();
 
         if (print) {
+            std::chrono::duration<double> local_duration = local_timer_e - local_timer_s;
+            std::cout << "Block construction time: " << local_duration.count() << " seconds." << std::endl;
             size_t G_cnt = 0;
             size_t L_cnt = 0;
 
@@ -2116,6 +2216,7 @@ class MergeHierarchicalNSW : public HierarchicalNSW<dist_t> {
         }
 
         // step5 start merging
+        local_timer_s = std::chrono::high_resolution_clock::now();
 #pragma omp parallel for schedule(dynamic, 72)
         for (size_t i = 0; i < blocks.size(); ++i) // Global Merge
         {
@@ -2195,6 +2296,13 @@ class MergeHierarchicalNSW : public HierarchicalNSW<dist_t> {
                 should_terminate.store(true, std::memory_order_release);
             }
         }
+        local_timer_e = std::chrono::high_resolution_clock::now();
+
+         if (print) {
+            std::chrono::duration<double> local_duration = local_timer_e - local_timer_s;
+            std::cout << "merge time: " << local_duration.count() << " seconds." << std::endl;
+         }
+
         if (et) {
             std::cout << "ET early terminate at " << total_hits.load(std::memory_order_relaxed) << " hits." << std::endl;
         }
@@ -2566,7 +2674,7 @@ class MergeHierarchicalNSW : public HierarchicalNSW<dist_t> {
             ef_for_εNG = parameters.Get<unsigned>("ef_for_εNG");
         } catch (std::invalid_argument&) {}
 
-        bool use_epsilon_filter = true; // default value
+        bool use_epsilon_filter = false; // default value
         try {
             use_epsilon_filter = parameters.Get<bool>("use_epsilon_filter");
         } catch (std::invalid_argument&) {}
@@ -2575,7 +2683,6 @@ class MergeHierarchicalNSW : public HierarchicalNSW<dist_t> {
         try {
             epsilon_threshold = parameters.Get<dist_t>("epsilon_threshold");
         } catch (std::invalid_argument&) {}
-        epsilon_threshold = 1.03f;
 
         if (print) {
             std::cout << "Building approximate εNG with ef=" << ef_for_εNG;
@@ -2909,7 +3016,7 @@ class MergeHierarchicalNSW : public HierarchicalNSW<dist_t> {
         // Step 3: Convert to sorted adjacency list with distances
         std::vector<std::vector<std::pair<dist_t, tableint>>> approx_εNG(n);
 
-#pragma omp parallel for schedule(dynamic, 64)
+#pragma omp parallel for schedule(dynamic, 72)
         for (tableint u = 0; u < n; ++u) {
             float* u_data = (float*) G1->getDataByInternalId(u);
 
@@ -3128,13 +3235,13 @@ class MergeHierarchicalNSW : public HierarchicalNSW<dist_t> {
                 }
 
                 // Progress reporting
-                size_t cnt = processed_count.fetch_add(1, std::memory_order_relaxed) + 1;
-                if (print && cnt % 10000 == 0) {
-#pragma omp critical
-                    {
-                        std::cout << "\rSIM merged " << 100 * cnt / n << " %..." << std::flush;
-                    }
-                }
+//                 size_t cnt = processed_count.fetch_add(1, std::memory_order_relaxed) + 1;
+//                 if (print && cnt % 10000 == 0) {
+// #pragma omp critical
+//                     {
+//                         std::cout << "\rSIM merged " << 100 * cnt / n << " %..." << std::flush;
+//                     }
+//                 }
             }
         }
         local_timer_e = std::chrono::high_resolution_clock::now();
