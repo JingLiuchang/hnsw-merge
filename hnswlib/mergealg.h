@@ -1655,8 +1655,14 @@ class MergeHierarchicalNSW : public HierarchicalNSW<dist_t> {
         }
 
         // 初始化G
+        auto local_timer_s = std::chrono::high_resolution_clock::now();
         initialize_mergeid_lookup(graphs);
         init_merge_graph_level0(graphs);
+        auto local_timer_e = std::chrono::high_resolution_clock::now();
+        if (parameters.Get<bool>("print")) {
+            std::chrono::duration<double> local_duration = local_timer_e - local_timer_s;
+            std::cout << "Initialize time/IO: " << local_duration.count() << " seconds." << std::endl;
+        }
 
         // merge order selection
         std::vector<std::pair<unsigned, unsigned>> merge_order;
@@ -2103,12 +2109,12 @@ class MergeHierarchicalNSW : public HierarchicalNSW<dist_t> {
         return blocks;
     }
 
-    // Greedy dominating set construction: dynamically updates marginal gain after each center selection
     std::vector<block_info> greedy_construct_blocks(HierarchicalNSW<dist_t>* G, const Parameters &parameters)
     {
         unsigned self_ef = parameters.Get<unsigned>("self_ef");
 
         // step1 get kNN (same as construct_blocks)
+        auto local_timer_s = std::chrono::high_resolution_clock::now();
         std::vector<std::vector<tableint>> Nks(G->cur_element_count);
 #pragma omp parallel for schedule(dynamic, 72)
         for (tableint i = 0; i < G->cur_element_count; ++i) {
@@ -2116,8 +2122,14 @@ class MergeHierarchicalNSW : public HierarchicalNSW<dist_t> {
             auto temp = G->Self_search(data_point, self_ef, i);
             while (!temp.empty()) { Nks[i].push_back(temp.top().second); temp.pop(); }
         }
+        auto local_timer_e = std::chrono::high_resolution_clock::now();
+         if (parameters.Get<bool>("print")) {
+            std::chrono::duration<double> local_duration = local_timer_e - local_timer_s;
+            std::cout << "Greedy Block Construction Breakdown: kNN search time: " << local_duration.count() << " seconds." << std::endl;
+        }
 
         // step2 construct reverse NN (same as construct_blocks)
+        local_timer_s = std::chrono::high_resolution_clock::now();
         std::vector<reverseNN_info> Rks(G->cur_element_count);
         std::vector<std::mutex> rks_mutexes(G->cur_element_count);
         for (tableint i = 0; i < G->cur_element_count; ++i) Rks[i] = reverseNN_info(i);
@@ -2129,9 +2141,15 @@ class MergeHierarchicalNSW : public HierarchicalNSW<dist_t> {
                 Rks[nb].length++;
             }
         }
+        local_timer_e = std::chrono::high_resolution_clock::now();
+         if (parameters.Get<bool>("print")) {
+            std::chrono::duration<double> local_duration = local_timer_e - local_timer_s;
+            std::cout << "Greedy Block Construction Breakdown: reverse NN construction time: " << local_duration.count() << " seconds." << std::endl;
+        }
 
         // step3 greedy dominating set with dynamic marginal gain
         // marginal_gain[i] = number of uncovered nodes that i can cover (itself + its RNNs)
+        local_timer_s = std::chrono::high_resolution_clock::now();
         std::vector<unsigned> marginal_gain(G->cur_element_count);
         for (tableint i = 0; i < G->cur_element_count; ++i)
             marginal_gain[i] = 1 + Rks[i].length; // self + rNNs
@@ -2170,6 +2188,123 @@ class MergeHierarchicalNSW : public HierarchicalNSW<dist_t> {
                 }
             }
             blocks.push_back(block_info(bid, std::move(bmembers)));
+        }
+        local_timer_e = std::chrono::high_resolution_clock::now();
+         if (parameters.Get<bool>("print")) {
+            std::chrono::duration<double> local_duration = local_timer_e - local_timer_s;
+            std::cout << "Greedy Block Construction Breakdown: blocking time: " << local_duration.count() << " seconds." << std::endl;
+        }
+
+        return blocks;
+    }
+
+    std::vector<block_info> two_phase_greedy_construct_blocks(HierarchicalNSW<dist_t>* G, const Parameters &parameters)
+    {
+        unsigned self_ef = parameters.Get<unsigned>("self_ef");
+
+        // step1 get kNN
+        auto local_timer_s = std::chrono::high_resolution_clock::now();
+        std::vector<std::vector<tableint>> Nks(G->cur_element_count);
+#pragma omp parallel for schedule(dynamic, 72)
+        for (tableint i = 0; i < G->cur_element_count; ++i) {
+            float* data_point = (float*) G->getDataByInternalId(i);
+            auto temp = G->Self_search(data_point, self_ef, i);
+            while (!temp.empty()) { Nks[i].push_back(temp.top().second); temp.pop(); }
+        }
+        auto local_timer_e = std::chrono::high_resolution_clock::now();
+         if (parameters.Get<bool>("print")) {
+            std::chrono::duration<double> local_duration = local_timer_e - local_timer_s;
+            std::cout << "Two-Phase Block Construction Breakdown: kNN search time: " << local_duration.count() << " seconds." << std::endl;
+        }
+
+        // step2 construct reverse NN
+        local_timer_s = std::chrono::high_resolution_clock::now();
+        std::vector<reverseNN_info> Rks(G->cur_element_count);
+        std::vector<std::mutex> rks_mutexes(G->cur_element_count);
+        for (tableint i = 0; i < G->cur_element_count; ++i) Rks[i] = reverseNN_info(i);
+#pragma omp parallel for schedule(dynamic, 72)
+        for (tableint i = 0; i < G->cur_element_count; ++i) {
+            for (tableint nb : Nks[i]) {
+                std::lock_guard<std::mutex> lock(rks_mutexes[nb]);
+                Rks[nb].rNNs.push_back(i);
+                Rks[nb].length++;
+            }
+        }
+        local_timer_e = std::chrono::high_resolution_clock::now();
+         if (parameters.Get<bool>("print")) {
+            std::chrono::duration<double> local_duration = local_timer_e - local_timer_s;
+            std::cout << "Two-Phase Block Construction Breakdown: reverse NN construction time: " << local_duration.count() << " seconds." << std::endl;
+        }
+
+        // phase1: greedy MDS — any node (covered or not) can be pivot if it still dominates uncovered nodes
+        local_timer_s = std::chrono::high_resolution_clock::now();
+        std::vector<unsigned> dominated(G->cur_element_count, 0);
+        std::vector<unsigned> is_pivot(G->cur_element_count, 0);
+        size_t undominated = G->cur_element_count;
+
+        // max-heap: (marginal_gain, id)
+        std::priority_queue<std::pair<unsigned, tableint>> pq;
+        for (tableint i = 0; i < G->cur_element_count; ++i)
+            pq.push({1 + Rks[i].length, i});
+
+        std::vector<tableint> pivot_order; // pivots in selection order
+
+        while (undominated > 0 && !pq.empty()) {
+            auto [gain, bid] = pq.top(); pq.pop();
+
+            // recompute actual marginal gain (uncovered nodes this pivot would newly dominate)
+            unsigned actual_gain = dominated[bid] ? 0 : 1;
+            for (tableint c : Rks[bid].rNNs)
+                if (!dominated[c]) actual_gain++;
+
+            if (actual_gain == 0) continue; // no new coverage, skip
+
+            if (actual_gain < gain) { pq.push({actual_gain, bid}); continue; } // stale, reinsert
+
+            // select bid as pivot
+            is_pivot[bid] = 1;
+            pivot_order.push_back(bid);
+            if (!dominated[bid]) { dominated[bid] = 1; --undominated; }
+            for (tableint c : Rks[bid].rNNs) {
+                if (!dominated[c]) { dominated[c] = 1; --undominated; }
+            }
+        }
+        local_timer_e = std::chrono::high_resolution_clock::now();
+         if (parameters.Get<bool>("print")) {
+            std::chrono::duration<double> local_duration = local_timer_e - local_timer_s;
+            std::cout << "Two-Phase Block Construction Breakdown: greedy MDS time: " << local_duration.count() << " seconds." << std::endl;
+        }
+
+        // phase2: assign non-pivot nodes to pivots
+        // process pivots in descending rNN-count order (most influential first)
+        local_timer_s = std::chrono::high_resolution_clock::now();
+        std::vector<tableint> sorted_pivots = pivot_order;
+        std::sort(sorted_pivots.begin(), sorted_pivots.end(),
+            [&](tableint a, tableint b){ return Rks[a].length > Rks[b].length; });
+
+        std::vector<unsigned> assigned(G->cur_element_count, 0);
+        for (tableint p : sorted_pivots) assigned[p] = 1; // pivots are "assigned" (to themselves)
+
+        std::vector<block_info> blocks;
+        blocks.reserve(sorted_pivots.size());
+        for (tableint p : sorted_pivots) {
+            std::vector<tableint> bmembers;
+            for (tableint c : Rks[p].rNNs) {
+                if (!is_pivot[c] && !assigned[c]) {
+                    assigned[c] = 1;
+                    bmembers.push_back(c);
+                }
+            }
+            blocks.push_back(block_info(p, std::move(bmembers)));
+        }
+
+        // any unassigned non-pivot node becomes a singleton block
+        for (tableint i = 0; i < G->cur_element_count; ++i)
+            if (!assigned[i]) blocks.push_back(block_info(i));
+        local_timer_e = std::chrono::high_resolution_clock::now();
+         if (parameters.Get<bool>("print")) {
+            std::chrono::duration<double> local_duration = local_timer_e - local_timer_s;
+            std::cout << "Two-Phase Block Construction Breakdown: block assignment time: " << local_duration.count() << " seconds." << std::endl;
         }
 
         return blocks;
