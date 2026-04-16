@@ -2202,6 +2202,95 @@ class MergeHierarchicalNSW : public HierarchicalNSW<dist_t> {
         return blocks;
     }
 
+    std::vector<block_info> greedy_construct_blocks(HierarchicalNSW<dist_t>* G, const Parameters &parameters)
+    {
+        unsigned self_ef = parameters.Get<unsigned>("self_ef");
+
+        // step1 get kNN (same as construct_blocks)
+        auto local_timer_s = std::chrono::high_resolution_clock::now();
+        std::vector<std::vector<tableint>> Nks(G->cur_element_count);
+#pragma omp parallel for schedule(dynamic, 72)
+        for (tableint i = 0; i < G->cur_element_count; ++i) {
+            float* data_point = (float*) G->getDataByInternalId(i);
+            auto temp = G->Self_search(data_point, self_ef, i);
+            while (!temp.empty()) { Nks[i].push_back(temp.top().second); temp.pop(); }
+        }
+        auto local_timer_e = std::chrono::high_resolution_clock::now();
+         if (parameters.Get<bool>("print")) {
+            std::chrono::duration<double> local_duration = local_timer_e - local_timer_s;
+            std::cout << "Greedy Block Construction Breakdown: kNN search time: " << local_duration.count() << " seconds." << std::endl;
+        }
+
+        // step2 construct reverse NN (same as construct_blocks)
+        local_timer_s = std::chrono::high_resolution_clock::now();
+        std::vector<reverseNN_info> Rks(G->cur_element_count);
+        std::vector<std::mutex> rks_mutexes(G->cur_element_count);
+        for (tableint i = 0; i < G->cur_element_count; ++i) Rks[i] = reverseNN_info(i);
+#pragma omp parallel for schedule(dynamic, 72)
+        for (tableint i = 0; i < G->cur_element_count; ++i) {
+            for (tableint nb : Nks[i]) {
+                std::lock_guard<std::mutex> lock(rks_mutexes[nb]);
+                Rks[nb].rNNs.push_back(i);
+                Rks[nb].length++;
+            }
+        }
+        local_timer_e = std::chrono::high_resolution_clock::now();
+         if (parameters.Get<bool>("print")) {
+            std::chrono::duration<double> local_duration = local_timer_e - local_timer_s;
+            std::cout << "Greedy Block Construction Breakdown: reverse NN construction time: " << local_duration.count() << " seconds." << std::endl;
+        }
+
+        // step3 greedy dominating set with dynamic marginal gain
+        // marginal_gain[i] = number of uncovered nodes that i can cover (itself + its RNNs)
+        local_timer_s = std::chrono::high_resolution_clock::now();
+        std::vector<unsigned> marginal_gain(G->cur_element_count);
+        for (tableint i = 0; i < G->cur_element_count; ++i)
+            marginal_gain[i] = 1 + Rks[i].length; // self + rNNs
+
+        // max-heap: (gain, id)
+        std::priority_queue<std::pair<unsigned, tableint>> pq;
+        for (tableint i = 0; i < G->cur_element_count; ++i)
+            pq.push({marginal_gain[i], i});
+
+        std::vector<unsigned> covered(G->cur_element_count, 0);
+        std::vector<block_info> blocks;
+
+        while (!pq.empty()) {
+            auto [gain, bid] = pq.top(); pq.pop();
+
+            if (covered[bid]) continue;
+
+            // lazy evaluation: recompute actual marginal gain
+            unsigned actual_gain = covered[bid] ? 0 : 1;
+            for (tableint c : Rks[bid].rNNs)
+                if (!covered[c]) actual_gain++;
+
+            // if stale, reinsert with updated gain
+            if (actual_gain < gain) {
+                pq.push({actual_gain, bid});
+                continue;
+            }
+
+            // select bid as center
+            covered[bid] = 1;
+            std::vector<tableint> bmembers;
+            for (tableint c : Rks[bid].rNNs) {
+                if (!covered[c]) {
+                    covered[c] = 1;
+                    bmembers.push_back(c);
+                }
+            }
+            blocks.push_back(block_info(bid, std::move(bmembers)));
+        }
+        local_timer_e = std::chrono::high_resolution_clock::now();
+         if (parameters.Get<bool>("print")) {
+            std::chrono::duration<double> local_duration = local_timer_e - local_timer_s;
+            std::cout << "Greedy Block Construction Breakdown: blocking time: " << local_duration.count() << " seconds." << std::endl;
+        }
+
+        return blocks;
+    }
+
     void RGTM_merge_into_later(std::vector<HierarchicalNSW<dist_t>*> graphs, unsigned G1_id, unsigned G2_id, const Parameters &parameters)
     {
         HierarchicalNSW<dist_t>* G1 = graphs[G1_id];
@@ -2222,7 +2311,7 @@ class MergeHierarchicalNSW : public HierarchicalNSW<dist_t> {
         std::atomic<size_t> total_hits{0};
         std::atomic<bool> should_terminate{false};
 
-        auto blocks = construct_blocks(G1, parameters);
+        auto blocks = greedy_construct_blocks(G1, parameters);
 
         if (print) {
             size_t G_cnt = 0;
