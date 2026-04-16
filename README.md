@@ -1,4 +1,4 @@
-# Multiple Index Merge for Approximate Nearest Neighbor Search
+# Reverse Neighbor Sliding and Order Selection for Efficient Multi-Proximity Graph Merging
 
 ## Introduction
 
