@@ -2,7 +2,7 @@
 
 ## Introduction
 
-This is the official implementation of the paper [Multiple Index Merge for Approximate Nearest Neighbor Search].
+This is the official implementation of the paper [Reverse Neighbor Sliding and Order Selection for Efficient Multi-Proximity Graph Merging].
 
 RNSM+ supports efficient two-index merging and the merge order of multiple indexes and leverage these techniques for scalable index construction. RNSM+ yields up to a 2.65$\times$ indexing speedup over existing methods, while maintaining expected superior search performance. Moreover, our method scales efficiently to 100 million vectors with 50 partitions, maintaining consistent speedups.
 
@@ -55,5 +55,6 @@ Tests include:
 * `scripts/test_RGTM_merge.sh`: merging random partitions.
 * `scripts/test_RGTM_skewed_merge.sh`: merging skewed partitions.
 
+*"Note: RGTM / NGM is the internal code name for the RNSM / CM described in the paper."*
   
 
