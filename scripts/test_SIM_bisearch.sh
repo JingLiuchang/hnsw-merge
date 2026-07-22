@@ -100,7 +100,7 @@ for db in "${datasets[@]}"; do
   QUERY_FILE="/mnt/ssd/merge_bench/${db}/${db}_query.fvecs"
   GT_FILE="/mnt/ssd/merge_bench/${db}/random/bi-index-data/${db}_random_groundtruth.ivecs"
   OUTPUT_PATH="/mnt/ssd/merge_bench/${db}/random/performance/bi"
-  MERGED_NSG_PATH="/mnt/ssd/merge_bench/${db}/random/bi-index-merged/${db}_random_RGTM"
+  MERGED_NSG_PATH="/mnt/ssd/merge_bench/${db}/random/bi-index-merged/${db}_random_SIM"
 
   # Fixed parameters for the search
   K=10          # Number of nearest neighbors to retrieve
@@ -115,15 +115,14 @@ for db in "${datasets[@]}"; do
     read -r G L S <<< "$param"
 
     # Construct the input HNSW graph file name and output CSV file name
-    GRAPH_INDEX_FILE="${MERGED_NSG_PATH}_et0_ef${G}_${L}_${S}_M${M}.hnsw"
-    PERFORMANCE_CSV="${OUTPUT_PATH}/K${K}/${db}_random_RGTM_et0_ef${G}_${L}_${S}_M${M}_K${K}.csv"
-    NDC_PERFORMANCE_CSV="${OUTPUT_PATH}/K${K}/NDC_${db}_random_RGTM_et0_ef${G}_${L}_${S}_M${M}_K${K}.csv"
+    GRAPH_INDEX_FILE="${MERGED_NSG_PATH}_et0_ef${G}_${L}_M${M}_e0.54.hnsw"
+    PERFORMANCE_CSV="${OUTPUT_PATH}/K${K}/${db}_random_SIM_et0_ef${G}_${L}_M${M}_K${K}_e0.54.csv"
     mkdir -p "${OUTPUT_PATH}/K${K}/"
 #    PERFORMANCE_CSV="${OUTPUT_PATH}/K${K}/tmp.csv"
 
     # Run the search command
-    echo "Running: $EXECUTABLE $DATA_FILE $QUERY_FILE $GT_FILE $GRAPH_INDEX_FILE $K $MIN_EF $MAX_EF $STEPSIZE $PERFORMANCE_CSV $NDC_PERFORMANCE_CSV"
-    $EXECUTABLE $DATA_FILE $QUERY_FILE $GT_FILE $GRAPH_INDEX_FILE $K $MIN_EF $MAX_EF $STEPSIZE $PERFORMANCE_CSV $NDC_PERFORMANCE_CSV
+    # echo "Running: $EXECUTABLE $DATA_FILE $QUERY_FILE $GT_FILE $GRAPH_INDEX_FILE $K $MIN_EF $MAX_EF $STEPSIZE $PERFORMANCE_CSV"
+    $EXECUTABLE $DATA_FILE $QUERY_FILE $GT_FILE $GRAPH_INDEX_FILE $K $MIN_EF $MAX_EF $STEPSIZE $PERFORMANCE_CSV
 #    mkdir -p "/home/jlc/pg-fast-merging/performance/${db}/"
 #    cp $PERFORMANCE_CSV "/home/jlc/pg-fast-merging/performance/${db}/"
   done

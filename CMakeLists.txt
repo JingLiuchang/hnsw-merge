@@ -35,7 +35,7 @@ if(HNSWLIB_EXAMPLES)
     set(CMAKE_CXX_STANDARD 11)
 
     if (CMAKE_CXX_COMPILER_ID MATCHES "Clang")
-#      SET( CMAKE_CXX_FLAGS  "-std=c++11 -DHAVE_CXX0X -openmp -fpic -ftree-vectorize" ) # debug
+      SET( CMAKE_CXX_FLAGS  "-std=c++11 -DHAVE_CXX0X -openmp -fpic -ftree-vectorize" ) # debug
       SET( CMAKE_CXX_FLAGS  "-Ofast -std=c++11 -DHAVE_CXX0X -openmp -fpic -ftree-vectorize" ) # release
       check_cxx_compiler_flag("-march=native" COMPILER_SUPPORT_NATIVE_FLAG)
       if(COMPILER_SUPPORT_NATIVE_FLAG)
@@ -49,10 +49,10 @@ if(HNSWLIB_EXAMPLES)
         endif()
       endif()
     elseif (CMAKE_CXX_COMPILER_ID STREQUAL "GNU")
-#      SET( CMAKE_CXX_FLAGS  "-lrt -std=c++11 -DHAVE_CXX0X -march=native -fpic -fopenmp -ftree-vectorize -ftree-vectorizer-verbose=0" ) # debug
+      SET( CMAKE_CXX_FLAGS  "-lrt -std=c++11 -DHAVE_CXX0X -march=native -fpic -fopenmp -ftree-vectorize -ftree-vectorizer-verbose=0" ) # debug
       SET( CMAKE_CXX_FLAGS  "-Ofast -lrt -std=c++11 -DHAVE_CXX0X -march=native -fpic -w -fopenmp -ftree-vectorize -ftree-vectorizer-verbose=0" ) # release
     elseif (CMAKE_CXX_COMPILER_ID STREQUAL "MSVC")
-#      SET( CMAKE_CXX_FLAGS  "-DHAVE_CXX0X /W1 /openmp /EHsc" ) # debug
+      SET( CMAKE_CXX_FLAGS  "-DHAVE_CXX0X /W1 /openmp /EHsc" ) # debug
       SET( CMAKE_CXX_FLAGS  "/O2 -DHAVE_CXX0X /W1 /openmp /EHsc" ) # release
     endif()
 

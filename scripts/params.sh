@@ -14,8 +14,8 @@ conda activate myenv
 
 
 
-#datasets=("sift" "deep1M" "gist"" "msmarco1M" "anton1m" "imagenet1m")
-datasets=("deep10m")
+#datasets=("sift" "deep1M" "gist" "msmarco1M" "anton1m" "imagenet1m")
+datasets=("deep1M")
 partition_methods=("random")
 ms=(2)
-Ts=(1)
+Ts=(72)

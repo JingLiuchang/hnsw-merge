@@ -76,6 +76,9 @@ class HierarchicalNSW : public AlgorithmInterface<dist_t> {
         metric_hops.store(0);
     }
 
+    bool collect_metrics_ = false;
+    void setCollectMetrics(bool enable) { collect_metrics_ = enable; }
+
     bool allow_replace_deleted_ = false;  // flag to replace deleted elements (marked as deleted) during insertions
 
     std::mutex deleted_elements_lock;  // lock for deleted_elements
@@ -373,9 +376,8 @@ class HierarchicalNSW : public AlgorithmInterface<dist_t> {
             int *data = (int *) get_linklist0(current_node_id);
             size_t size = getListCount((linklistsizeint*)data);
 //                bool cur_node_deleted = isMarkedDeleted(current_node_id);
-            if (collect_metrics) {
+            if (collect_metrics_) {
                 metric_hops++;
-                metric_distance_computations+=size;
             }
 
 #ifdef USE_SSE
@@ -398,6 +400,7 @@ class HierarchicalNSW : public AlgorithmInterface<dist_t> {
 
                     char *currObj1 = (getDataByInternalId(candidate_id));
                     dist_t dist = fstdistfunc_(data_point, currObj1, dist_func_param_);
+                    if (collect_metrics_) metric_distance_computations++;
 
                     bool flag_consider_candidate;
                     if (!bare_bone_search && stop_condition) {
@@ -532,9 +535,8 @@ class HierarchicalNSW : public AlgorithmInterface<dist_t> {
             int *data = (int *) get_linklist0(current_node_id);
             size_t size = getListCount((linklistsizeint*)data);
 //                bool cur_node_deleted = isMarkedDeleted(current_node_id);
-            if (collect_metrics) {
+            if (collect_metrics_) {
                 metric_hops++;
-                metric_distance_computations+=size;
             }
 
 #ifdef USE_SSE
@@ -557,6 +559,7 @@ class HierarchicalNSW : public AlgorithmInterface<dist_t> {
 
                     char *currObj1 = (getDataByInternalId(candidate_id));
                     dist_t dist = fstdistfunc_(data_point, currObj1, dist_func_param_);
+                    if (collect_metrics_) metric_distance_computations++;
 
                     bool flag_consider_candidate;
                     if (!bare_bone_search && stop_condition) {
@@ -661,9 +664,8 @@ class HierarchicalNSW : public AlgorithmInterface<dist_t> {
             int *data = (int *) get_linklist0(current_node_id);
             size_t size = getListCount((linklistsizeint*)data);
 //                bool cur_node_deleted = isMarkedDeleted(current_node_id);
-            if (collect_metrics) {
+            if (collect_metrics_) {
                 metric_hops++;
-                metric_distance_computations+=size;
             }
 
 #ifdef USE_SSE
@@ -686,6 +688,7 @@ class HierarchicalNSW : public AlgorithmInterface<dist_t> {
 
                     char *currObj1 = (getDataByInternalId(candidate_id));
                     dist_t dist = fstdistfunc_(data_point, currObj1, dist_func_param_);
+                    if (collect_metrics_) metric_distance_computations++;
 
                     bool flag_consider_candidate;
                     if (!bare_bone_search && stop_condition) {
@@ -1684,8 +1687,10 @@ class HierarchicalNSW : public AlgorithmInterface<dist_t> {
 
                 data = (unsigned int *) get_linklist(currObj, level);
                 int size = getListCount(data);
-                metric_hops++;
-                metric_distance_computations+=size;
+                if (collect_metrics_) {
+                    metric_hops++;
+                    metric_distance_computations+=size;
+                }
 
                 tableint *datal = (tableint *) (data + 1);
                 for (int i = 0; i < size; i++) {
@@ -1744,8 +1749,10 @@ class HierarchicalNSW : public AlgorithmInterface<dist_t> {
 
                 data = (unsigned int *) get_linklist(currObj, level);
                 int size = getListCount(data);
-                metric_hops++;
-                metric_distance_computations+=size;
+                if (collect_metrics_) {
+                    metric_hops++;
+                    metric_distance_computations+=size;
+                }
 
                 tableint *datal = (tableint *) (data + 1);
                 for (int i = 0; i < size; i++) {

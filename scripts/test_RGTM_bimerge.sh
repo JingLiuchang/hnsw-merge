@@ -61,12 +61,12 @@ for T in "${Ts[@]}"; do # 并行测试
         "40 10 3"
       )
     elif [ "$db" == "deep10m" ]; then
-      ef=60
+      ef=40
       M=30
       sub_ef=300
       sub_M=30
       PARAMS=(
-              "60 30 3"
+              "40 5 3"
             )
     elif [ "$db" == "msmarc10m" ]; then
       ef=50
@@ -121,7 +121,7 @@ for T in "${Ts[@]}"; do # 并行测试
     for param in "${PARAMS[@]}"; do
       read -r G L S <<< "$param"
 
-      OUTPUT_FILE="${MERGED_NSG_PATH}_et${ET}_ef${G}_${L}_${S}_M${M}.hnsw"
+      OUTPUT_FILE="${MERGED_NSG_PATH}_et${ET}_ef${G}_${L}_${S}_M${M}_adjacent-blocks.hnsw"
 
       echo "$EXECUTABLE $DATA_FILE $G $L $S ${M} ${sub_ef} ${sub_M} 2 $GRAPH_INDEX_FILE $OUTPUT_FILE $ET $RATIO $morder $T"
       $EXECUTABLE $DATA_FILE $G $L $S ${M} ${sub_ef} ${sub_M} 2 $GRAPH_INDEX_FILE $OUTPUT_FILE $ET $RATIO $morder $T 2>&1 | tee -a "$LOG_FILE"

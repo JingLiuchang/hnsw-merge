@@ -2104,6 +2104,49 @@ class MergeHierarchicalNSW : public HierarchicalNSW<dist_t> {
          if (parameters.Get<bool>("print")) {
             std::chrono::duration<double> local_duration = local_timer_e - local_timer_s;
             std::cout << "Block_Construction Breakdown: blocking time: " << local_duration.count() << " seconds." << std::endl;
+
+            // Block size statistics
+            size_t num_blocks = blocks.size();
+            size_t num_singletons = 0;
+            double total_size = 0;
+            size_t max_size = 0;
+            for (auto& b : blocks) {
+                size_t sz = 1 + b.bmembers.size();
+                total_size += sz;
+                max_size = std::max(max_size, sz);
+                if (b.bmembers.empty()) num_singletons++;
+            }
+            double mean_size = total_size / num_blocks;
+            double var = 0;
+            for (auto& b : blocks) {
+                double sz = 1 + b.bmembers.size();
+                var += (sz - mean_size) * (sz - mean_size);
+            }
+            double std_size = std::sqrt(var / num_blocks);
+            std::cout << "Block Stats: count=" << num_blocks
+                      << " mean_size=" << mean_size
+                      << " std_size=" << std_size
+                      << " max_size=" << max_size
+                      << " singletons=" << num_singletons << std::endl;
+
+            // Pivot rNN utilization by quartile
+            std::vector<std::pair<unsigned, double>> pivot_util;
+            pivot_util.reserve(num_blocks);
+            for (auto& b : blocks) {
+                unsigned rnn_count = Rks[b.bid].length;
+                if (rnn_count == 0) continue;
+                double util = (double)b.bmembers.size() / rnn_count;
+                pivot_util.push_back({rnn_count, util});
+            }
+            std::sort(pivot_util.begin(), pivot_util.end(),
+                [](const std::pair<unsigned,double>& a, const std::pair<unsigned,double>& b){ return a.first > b.first; });
+            size_t q = pivot_util.size() / 20;
+            double top25_util = 0, bot25_util = 0;
+            for (size_t i = 0; i < q; i++) top25_util += pivot_util[i].second;
+            for (size_t i = pivot_util.size() - q; i < pivot_util.size(); i++) bot25_util += pivot_util[i].second;
+            if (q > 0) { top25_util /= q; bot25_util /= q; }
+            std::cout << "Block Stats: top5%_rNN_pivot_utilization=" << top25_util
+                      << " bot5%_rNN_pivot_utilization=" << bot25_util << std::endl;
         }
 
         return blocks;
@@ -2193,6 +2236,49 @@ class MergeHierarchicalNSW : public HierarchicalNSW<dist_t> {
          if (parameters.Get<bool>("print")) {
             std::chrono::duration<double> local_duration = local_timer_e - local_timer_s;
             std::cout << "Greedy Block Construction Breakdown: blocking time: " << local_duration.count() << " seconds." << std::endl;
+
+            // Block size statistics
+            size_t num_blocks = blocks.size();
+            size_t num_singletons = 0;
+            double total_size = 0;
+            size_t max_size = 0;
+            for (auto& b : blocks) {
+                size_t sz = 1 + b.bmembers.size();
+                total_size += sz;
+                max_size = std::max(max_size, sz);
+                if (b.bmembers.empty()) num_singletons++;
+            }
+            double mean_size = total_size / num_blocks;
+            double var = 0;
+            for (auto& b : blocks) {
+                double sz = 1 + b.bmembers.size();
+                var += (sz - mean_size) * (sz - mean_size);
+            }
+            double std_size = std::sqrt(var / num_blocks);
+            std::cout << "Greedy Block Stats: count=" << num_blocks
+                      << " mean_size=" << mean_size
+                      << " std_size=" << std_size
+                      << " max_size=" << max_size
+                      << " singletons=" << num_singletons << std::endl;
+
+            // Pivot rNN utilization by quartile
+            std::vector<std::pair<unsigned, double>> pivot_util;
+            pivot_util.reserve(num_blocks);
+            for (auto& b : blocks) {
+                unsigned rnn_count = Rks[b.bid].length;
+                if (rnn_count == 0) continue;
+                double util = (double)b.bmembers.size() / rnn_count;
+                pivot_util.push_back({rnn_count, util});
+            }
+            std::sort(pivot_util.begin(), pivot_util.end(),
+                [](const std::pair<unsigned,double>& a, const std::pair<unsigned,double>& b){ return a.first > b.first; });
+            size_t q = pivot_util.size() / 20;
+            double top25_util = 0, bot25_util = 0;
+            for (size_t i = 0; i < q; i++) top25_util += pivot_util[i].second;
+            for (size_t i = pivot_util.size() - q; i < pivot_util.size(); i++) bot25_util += pivot_util[i].second;
+            if (q > 0) { top25_util /= q; bot25_util /= q; }
+            std::cout << "Greedy Block Stats: top5%_rNN_pivot_utilization=" << top25_util
+                      << " bot5%_rNN_pivot_utilization=" << bot25_util << std::endl;
         }
 
         return blocks;
@@ -2305,6 +2391,216 @@ class MergeHierarchicalNSW : public HierarchicalNSW<dist_t> {
          if (parameters.Get<bool>("print")) {
             std::chrono::duration<double> local_duration = local_timer_e - local_timer_s;
             std::cout << "Two-Phase Block Construction Breakdown: block assignment time: " << local_duration.count() << " seconds." << std::endl;
+
+            // Block size statistics
+            size_t num_blocks = blocks.size();
+            size_t num_singletons = 0;
+            double total_size = 0;
+            size_t max_size = 0;
+            for (auto& b : blocks) {
+                size_t sz = 1 + b.bmembers.size();
+                total_size += sz;
+                max_size = std::max(max_size, sz);
+                if (b.bmembers.empty()) num_singletons++;
+            }
+            double mean_size = total_size / num_blocks;
+            double var = 0;
+            for (auto& b : blocks) {
+                double sz = 1 + b.bmembers.size();
+                var += (sz - mean_size) * (sz - mean_size);
+            }
+            double std_size = std::sqrt(var / num_blocks);
+            std::cout << "Two-Phase Block Stats: count=" << num_blocks
+                      << " mean_size=" << mean_size
+                      << " std_size=" << std_size
+                      << " max_size=" << max_size
+                      << " singletons=" << num_singletons << std::endl;
+
+            // Adjacent pivot pairs (high-density clustering indicator)
+            size_t adj_pivot_pairs = 0;
+            for (tableint p : pivot_order) {
+                for (tableint c : Rks[p].rNNs) {
+                    if (is_pivot[c]) adj_pivot_pairs++;
+                }
+            }
+            adj_pivot_pairs /= 2;
+            std::cout << "Two-Phase Block Stats: adjacent_pivot_pairs=" << adj_pivot_pairs << std::endl;
+
+            // Pivot rNN utilization by quartile
+            std::vector<std::pair<unsigned, double>> pivot_util;
+            pivot_util.reserve(num_blocks);
+            for (auto& b : blocks) {
+                unsigned rnn_count = Rks[b.bid].length;
+                if (rnn_count == 0) continue;
+                double util = (double)b.bmembers.size() / rnn_count;
+                pivot_util.push_back({rnn_count, util});
+            }
+            std::sort(pivot_util.begin(), pivot_util.end(),
+                [](const std::pair<unsigned,double>& a, const std::pair<unsigned,double>& b){ return a.first > b.first; });
+            size_t q = pivot_util.size() / 20;
+            double top25_util = 0, bot25_util = 0;
+            for (size_t i = 0; i < q; i++) top25_util += pivot_util[i].second;
+            for (size_t i = pivot_util.size() - q; i < pivot_util.size(); i++) bot25_util += pivot_util[i].second;
+            if (q > 0) { top25_util /= q; bot25_util /= q; }
+            std::cout << "Two-Phase Block Stats: top5%_rNN_pivot_utilization=" << top25_util
+                      << " bot5%_rNN_pivot_utilization=" << bot25_util << std::endl;
+        }
+
+        return blocks;
+    }
+
+    // Two-phase variant of construct_blocks (no dynamic gain update).
+    // Phase 1: sort by rNN count descending (like construct_blocks), but allow adjacent pivots
+    //          — only skip a node when it would add zero new coverage (actual_gain == 0).
+    // Phase 2: identical to two_phase_greedy_construct_blocks.
+    std::vector<block_info> two_phase_construct_blocks(HierarchicalNSW<dist_t>* G, const Parameters &parameters)
+    {
+        unsigned self_ef = parameters.Get<unsigned>("self_ef");
+
+        // step1 get kNN
+        auto local_timer_s = std::chrono::high_resolution_clock::now();
+        std::vector<std::vector<tableint>> Nks(G->cur_element_count);
+#pragma omp parallel for schedule(dynamic, 72)
+        for (tableint i = 0; i < G->cur_element_count; ++i) {
+            float* data_point = (float*) G->getDataByInternalId(i);
+            auto temp = G->Self_search(data_point, self_ef, i);
+            while (!temp.empty()) { Nks[i].push_back(temp.top().second); temp.pop(); }
+        }
+        auto local_timer_e = std::chrono::high_resolution_clock::now();
+        if (parameters.Get<bool>("print")) {
+            std::chrono::duration<double> d = local_timer_e - local_timer_s;
+            std::cout << "Two-Phase-Sort Block Construction Breakdown: kNN search time: " << d.count() << " seconds." << std::endl;
+        }
+
+        // step2 construct reverse NN
+        local_timer_s = std::chrono::high_resolution_clock::now();
+        std::vector<reverseNN_info> Rks(G->cur_element_count);
+        std::vector<std::mutex> rks_mutexes(G->cur_element_count);
+        for (tableint i = 0; i < G->cur_element_count; ++i) Rks[i] = reverseNN_info(i);
+#pragma omp parallel for schedule(dynamic, 72)
+        for (tableint i = 0; i < G->cur_element_count; ++i) {
+            for (tableint nb : Nks[i]) {
+                std::lock_guard<std::mutex> lock(rks_mutexes[nb]);
+                Rks[nb].rNNs.push_back(i);
+                Rks[nb].length++;
+            }
+        }
+        local_timer_e = std::chrono::high_resolution_clock::now();
+        if (parameters.Get<bool>("print")) {
+            std::chrono::duration<double> d = local_timer_e - local_timer_s;
+            std::cout << "Two-Phase-Sort Block Construction Breakdown: reverse NN construction time: " << d.count() << " seconds." << std::endl;
+        }
+
+        // phase1: sort by rNN count descending, select pivot if actual_gain > 0
+        local_timer_s = std::chrono::high_resolution_clock::now();
+        std::vector<tableint> sorted_ids(G->cur_element_count);
+        std::iota(sorted_ids.begin(), sorted_ids.end(), 0);
+        tbb::parallel_sort(sorted_ids.begin(), sorted_ids.end(),
+            [&](tableint a, tableint b){ return Rks[a].length > Rks[b].length; });
+
+        std::vector<unsigned> dominated(G->cur_element_count, 0);
+        std::vector<unsigned> is_pivot(G->cur_element_count, 0);
+        std::vector<tableint> pivot_order;
+
+        for (tableint bid : sorted_ids) {
+            unsigned actual_gain = dominated[bid] ? 0 : 1;
+            for (tableint c : Rks[bid].rNNs)
+                if (!dominated[c]) actual_gain++;
+            if (actual_gain == 0) continue;
+
+            is_pivot[bid] = 1;
+            pivot_order.push_back(bid);
+            if (!dominated[bid]) dominated[bid] = 1;
+            for (tableint c : Rks[bid].rNNs)
+                if (!dominated[c]) dominated[c] = 1;
+        }
+        local_timer_e = std::chrono::high_resolution_clock::now();
+        if (parameters.Get<bool>("print")) {
+            std::chrono::duration<double> d = local_timer_e - local_timer_s;
+            std::cout << "Two-Phase-Sort Block Construction Breakdown: sort MDS time: " << d.count() << " seconds." << std::endl;
+        }
+
+        // phase2: assign non-pivot nodes to pivots (identical to two_phase_greedy)
+        local_timer_s = std::chrono::high_resolution_clock::now();
+        std::vector<tableint> sorted_pivots = pivot_order;
+        std::sort(sorted_pivots.begin(), sorted_pivots.end(),
+            [&](tableint a, tableint b){ return Rks[a].length > Rks[b].length; });
+
+        std::vector<unsigned> assigned(G->cur_element_count, 0);
+        for (tableint p : sorted_pivots) assigned[p] = 1;
+
+        std::vector<block_info> blocks;
+        blocks.reserve(sorted_pivots.size());
+        for (tableint p : sorted_pivots) {
+            std::vector<tableint> bmembers;
+            for (tableint c : Rks[p].rNNs) {
+                if (!is_pivot[c] && !assigned[c]) {
+                    assigned[c] = 1;
+                    bmembers.push_back(c);
+                }
+            }
+            blocks.push_back(block_info(p, std::move(bmembers)));
+        }
+
+        for (tableint i = 0; i < G->cur_element_count; ++i)
+            if (!assigned[i]) blocks.push_back(block_info(i));
+        local_timer_e = std::chrono::high_resolution_clock::now();
+        if (parameters.Get<bool>("print")) {
+            std::chrono::duration<double> d = local_timer_e - local_timer_s;
+            std::cout << "Two-Phase-Sort Block Construction Breakdown: block assignment time: " << d.count() << " seconds." << std::endl;
+
+            // Block size statistics
+            size_t num_blocks = blocks.size();
+            size_t num_singletons = 0;
+            double total_size = 0;
+            size_t max_size = 0;
+            for (auto& b : blocks) {
+                size_t sz = 1 + b.bmembers.size();
+                total_size += sz;
+                max_size = std::max(max_size, sz);
+                if (b.bmembers.empty()) num_singletons++;
+            }
+            double mean_size = total_size / num_blocks;
+            double var = 0;
+            for (auto& b : blocks) {
+                double sz = 1 + b.bmembers.size();
+                var += (sz - mean_size) * (sz - mean_size);
+            }
+            double std_size = std::sqrt(var / num_blocks);
+            std::cout << "Two-Phase-Sort Block Stats: count=" << num_blocks
+                      << " mean_size=" << mean_size
+                      << " std_size=" << std_size
+                      << " max_size=" << max_size
+                      << " singletons=" << num_singletons << std::endl;
+
+            // Adjacent pivot pairs
+            size_t adj_pivot_pairs = 0;
+            for (tableint p : pivot_order) {
+                for (tableint c : Rks[p].rNNs) {
+                    if (is_pivot[c]) adj_pivot_pairs++;
+                }
+            }
+            adj_pivot_pairs /= 2;
+            std::cout << "Two-Phase-Sort Block Stats: adjacent_pivot_pairs=" << adj_pivot_pairs << std::endl;
+
+            // Pivot rNN utilization by quartile
+            std::vector<std::pair<unsigned, double>> pivot_util;
+            pivot_util.reserve(num_blocks);
+            for (auto& b : blocks) {
+                unsigned rnn_count = Rks[b.bid].length;
+                if (rnn_count == 0) continue;
+                double util = (double)b.bmembers.size() / rnn_count;
+                pivot_util.push_back({rnn_count, util});
+            }
+            std::sort(pivot_util.begin(), pivot_util.end(),
+                [](const std::pair<unsigned,double>& a, const std::pair<unsigned,double>& b){ return a.first > b.first; });
+            size_t q = pivot_util.size() / 20;
+            double top5_util = 0, bot5_util = 0;
+            for (size_t i = 0; i < q; i++) top5_util += pivot_util[i].second;
+            for (size_t i = pivot_util.size() - q; i < pivot_util.size(); i++) bot5_util += pivot_util[i].second;
+            if (q > 0) { top5_util /= q; bot5_util /= q; }
+            std::cout << "Two-Phase-Sort Block Stats: top5%_rNN_pivot_utilization=" << top5_util
+                      << " bot5%_rNN_pivot_utilization=" << bot5_util << std::endl;
         }
 
         return blocks;
@@ -2334,7 +2630,7 @@ class MergeHierarchicalNSW : public HierarchicalNSW<dist_t> {
 
         local_timer_s = std::chrono::high_resolution_clock::now();
         // auto blocks = construct_blocks(G1, parameters);
-        auto blocks = greedy_construct_blocks(G1, parameters);
+        auto blocks = two_phase_construct_blocks(G1, parameters);
         local_timer_e = std::chrono::high_resolution_clock::now();
 
         if (print) {

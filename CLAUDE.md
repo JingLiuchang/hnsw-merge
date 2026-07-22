@@ -4,129 +4,103 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## Overview
 
-This is a research codebase extending the hnswlib library with graph merging algorithms for HNSW (Hierarchical Navigable Small World) indices. The project implements multiple merge strategies (NGM, RGTM, OVERLAP) for combining partitioned HNSW graphs.
+Research codebase extending hnswlib with graph merging algorithms for HNSW (Hierarchical Navigable Small World) indices. The project implements multiple merge strategies for combining partitioned HNSW graphs. Currently on branch `parallelism-exp`, comparing NSM (sequential/chain-dependent) vs SIM/RNSM (parallelism-friendly) merge algorithms.
 
-## Build System
-
-Build the project using CMake:
+## Build
 
 ```bash
-mkdir build
-cd build
-cmake ..
-make
+mkdir build && cd build && cmake .. && make -j$(nproc)
 ```
 
-Key executables built:
-- `test_RGTM_merge` - RGTM (Reverse Graph Traversal Merge) algorithm
-- `test_NGM_merge` - NGM (Naive Graph Merge) algorithm
-- `test_OVERLAP_merge` - Overlapping partition merge
-- `test_hnsw_index` - Basic HNSW index construction
-- `test_hnsw_search` - HNSW search testing
-- Standard hnswlib examples (example_search, example_filter, etc.)
+Requires TBB (Threading Building Blocks). Build produces executables in `build/`:
+- `test_RGTM_merge`, `test_NGM_merge`, `test_NSM_merge`, `test_SIM_merge`, `test_OVERLAP_merge`
+- `test_hnsw_index`, `test_hnsw_search`, `test_hnsw_level0_index`
 
-The build requires TBB (Threading Building Blocks) library for parallel operations.
+## Running Experiments
+
+Shell scripts in `scripts/` source `scripts/params.sh` for dataset/parameter configuration:
+
+```bash
+cd scripts
+bash test_RGTM_bimerge.sh    # RGTM pairwise merge
+bash test_NSM_bimerge.sh     # NSM merge
+bash test_SIM_bisearch.sh    # SIM (RNSM) merge
+```
+
+Executables take positional CLI args. Example for `test_NSM_merge`:
+```
+data_file global_ef local_ef M sub_ef sub_M graph_num graph_index_file merged_nsg_path k_plus merge_order_selection [T] [merge_order_file]
+```
+
+For `test_RGTM_merge`:
+```
+data_file global_ef local_ef self_ef M sub_ef sub_M graph_num graph_index_file merged_nsg_path ET ratio merge_order_selection [T] [merge_order_file]
+```
+
+Subgraph index files are named with pattern: `{prefix}{i}_ef{sub_ef}_M{sub_M}.hnsw`
 
 ## Architecture
 
-### Core Components
+### Core Headers (`hnswlib/`)
 
-**hnswlib/hnswalg.h**: Base `HierarchicalNSW` class implementing standard HNSW algorithm
-- Manages graph structure with `data_level0_memory_` and `linkLists_`
-- Uses `label_lookup_` to map external labels to internal tableint IDs
-- Thread-safe operations with `label_op_locks_` and `link_list_locks_`
+**`hnswalg.h`**: Base `HierarchicalNSW<dist_t>` class. Manages graph structure via `data_level0_memory_` (level-0 links + data) and `linkLists_` (higher-level links). Uses `label_lookup_` (external label → internal `tableint` ID).
 
-**hnswlib/mergealg.h**: `MergeHierarchicalNSW` class extending HierarchicalNSW
-- Adds merge-specific data structures:
-  - `mergeid_lookup_`: Maps merge IDs to (local ID, graph ID) pairs
-  - `globalid_offset`: Tracks element offsets across merged graphs
-- Implements three merge strategies: NGM, RGTM, and OVERLAP
+**`mergealg.h`**: `MergeHierarchicalNSW<dist_t>` extending `HierarchicalNSW`. The central dispatch is `mgraph_merge(m, graphs, parameters)` which reads a `"method"` parameter string and calls the appropriate implementation. Also adds:
+- `mergeid_lookup_`: merge ID → `(local_id, graph_id)` pairs
+- `globalid_offset`: cumulative element counts across subgraphs
 
-**hnswlib/parameter.h**: Parameter management and data structures
-- `reverseNN_info`: Stores reverse nearest neighbor information for merge operations
-- `block_info`: Manages partition block membership
-- `Parameters`: Generic key-value parameter storage
+**`parameter.h`**: `Parameters` key-value store, `reverseNN_info`, `block_info` structs.
 
-**hnswlib/utils.h**: Utility functions for data loading and I/O operations
+**`utils.h`**: Data loading (`load_data`, `safe_load_data` for fvecs/bvecs format).
 
-### Merge Algorithms
+### Merge Algorithms (all in `mergealg.h`)
 
-The codebase implements three graph merging approaches:
+All algorithms are dispatched from `mgraph_merge()` via the `"method"` parameter:
 
-1. **NGM (Naive Graph Merge)**: Simple concatenation of subgraphs
-2. **RGTM (Reverse Graph Traversal Merge)**: Uses reverse NN traversal with configurable parameters (global_ef, local_ef, self_ef)
-3. **OVERLAP**: Handles overlapping partitions with special boundary handling
+| Method key | Function | Description |
+|---|---|---|
+| `"NGM"` | `NGM_merge_into_later` | Naive graph merge — insert G1 nodes into G2 via full search |
+| `"RGTM"` | `RGTM_merge_into_later` | Reverse Graph Traversal Merge — uses reverse NN traversal |
+| `"NSM"` | `NSM_merge_into_later` | Neighbor Sliding Merge — chain-dependent sliding (sequential) |
+| `"NSM_OPT"` | `NSM_merge_into_later_optimized` | Optimized NSM variant |
+| `"SIM"` | `SIM_merge_into_later` | Set-cover greedy pivot selection enabling full parallelism (RNSM) |
+| `"SIM_OPT"` | `SIM_merge_into_later_optimized` | Optimized SIM variant |
 
-### Test Programs
+**Key algorithmic distinction (parallelism-exp branch)**: SIM/RNSM pre-selects pivots via greedy set-cover on RNN graph before merging, allowing fully parallel execution. NSM creates chain dependencies (each follower depends on previous result), limiting parallelism.
 
-Test programs in `examples/cpp/` follow this pattern:
-- Load dataset using `load_data()` from utils.h
-- Accept command-line parameters for ef_construction, M, merge parameters
-- Build or load subgraph indices
-- Execute merge algorithm
-- Output merged index to file
+### Merge Order Selection
 
-Example: `test_RGTM_merge` takes 14-16 arguments including data file, ef parameters, M values, graph paths, merge order selection, and optional threading/order file parameters.
+`mgraph_merge` also reads `"merge_order_selection"` to determine pairwise merge sequence:
+- `"pairwise"`: sequential pairs (0,1), (1,2), …
+- `"circle"`: circular/ring order
+- `"mst"`: order from MST file (requires `"merge_order_file"` path)
 
-## Running Tests
+### Test Programs Pattern (`examples/cpp/`)
 
-### Shell Scripts
+Each `test_*_merge.cpp`:
+1. Parses CLI args
+2. `load_data()` or `safe_load_data()` the full dataset
+3. Loads subgraph `.hnsw` files into a `std::vector<HierarchicalNSW<float>*>`
+4. Creates `MergeHierarchicalNSW<float>` and calls `mgraph_merge()`
+5. Saves merged index and runs recall evaluation
 
-Scripts in `scripts/` automate testing workflows:
+## Key Files for Current Work
 
-**scripts/params.sh**: Central configuration for datasets and parameters
-- Defines dataset arrays, partition methods, and parameter ranges
-- Sources conda environment setup
-
-**scripts/build-subgraph.sh**: Builds subgraph indices for datasets
-- Iterates over datasets and partition methods
-- Sets dataset-specific ef and M parameters
-- Calls index construction executables
-
-**scripts/test_RGTM_merge.sh**: Runs RGTM merge experiments
-- Commented out but shows parameter sweep patterns
-- Logs results to performance directories
-
-### Python Utilities
-
-Python scripts in `py/` handle data preparation and analysis:
-- `random_partition.py`: Random dataset partitioning
-- `kmeans_partition.py`, `kmeans_overlapping_partition.py`: K-means based partitioning
-- `merge_time_extract.py`: Extract timing data from logs
-- `plot-performance.py`: Visualize performance results
-- `utils.py`: Common utility functions
+- `PARALLELISM_EXP_SETUP.md`: Algorithm specs (NSM and SIM/RNSM pseudocode) and tasks for `parallelism-exp` branch
+- `scripts/test_NSM_bimerge.sh`, `scripts/test_SIM_bisearch.sh`: Experiment scripts for parallelism comparison
+- `hnswlib/mergealg.h`: All merge algorithm implementations (3000+ lines)
 
 ## Dataset Configuration
 
-Supported datasets (from params.sh and build-subgraph.sh):
-- sift: (1M, 128-dim), M=25
-- deep1M: (1M, 96-dim), M=30
-- deep10m: (10M, 96-dim), M=30, ef=300
-- msong: (990K, 420-dim), M=40
-- msmarco1M: (1M, 1024-dim), M=30
-- gist: (1M, 960-dim), M=30
-- anton1m, imagenet1m: M=30
+Datasets configured in `scripts/params.sh`. Common parameters:
 
-Each dataset has specific ef_construction and M parameters tuned for performance.
+| Dataset | Size | Dim | M | ef |
+|---|---|---|---|---|
+| sift | 1M | 128 | 25 | 40 |
+| deep1M | 1M | 96 | 30 | 40 |
+| deep10m | 10M | 96 | 30 | 300 |
+| msong | 990K | 420 | 40 | 30 |
+| msmarco1M | 1M | 1024 | 30 | 50 |
+| gist | 1M | 960 | 30 | 40 |
 
-## Key Concepts
-
-**Merge ID System**: The merge algorithms use a two-level ID mapping:
-- External labels (labeltype) → Internal IDs (tableint) via `label_lookup_`
-- Merge IDs (mergeidtype) → (local ID, graph ID) pairs via `mergeid_lookup_`
-
-**Partition Methods**:
-- Random partitioning
-- K-means clustering (with/without overlap)
-- Configurable number of partitions (T parameter)
-
-**Merge Order Selection**: RGTM supports different merge order strategies:
-- "pairwise": Sequential pairwise merging
-- Custom order from file
-
-## Development Notes
-
-- This is a header-only C++ library (hnswlib core)
-- Test programs are compiled separately with TBB linkage
-- Performance logs stored in `performance/` directory (gitignored)
-- Build artifacts in `cmake-build-debug/` and `build/` (gitignored)
+Data files are in fvecs/bvecs format. Performance logs go to `performance/` (gitignored).

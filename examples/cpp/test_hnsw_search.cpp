@@ -65,9 +65,9 @@ inline void ParallelFor(size_t start, size_t end, size_t numThreads, Function fn
 
 
 int main(int argc, char** argv) {
-    if (argc != 10) {
+    if (argc < 10 || argc > 11) {
         std::cout << argv[0]
-                  << "data_file query_file gt_file graph_index_path k min_ef max_ef stepsize performance_csv"
+                  << " data_file query_file gt_file graph_index_path k min_ef max_ef stepsize performance_csv [ndc_csv]"
                   << std::endl;
         exit(-1);
     }
@@ -90,6 +90,8 @@ int main(int argc, char** argv) {
     int max_ef = atoi(argv[7]);
     int stepsize = atoi(argv[8]);
     std::string performance_csv = std::string(argv[9]);
+    bool report_ndc = (argc == 11);
+    std::string ndc_csv = report_ndc ? std::string(argv[10]) : "";
 
     int num_threads = 1;       // Number of threads for operations with index
 
@@ -110,8 +112,13 @@ int main(int argc, char** argv) {
     });
     std::cout << "Warmup completed." << std::endl;
 
+    alg_hnsw->setCollectMetrics(report_ndc);
 
-    std::cout << "ef " << "Recall@" << k << " " << "QPS " << std::endl;
+    if (report_ndc)
+        std::cout << "ef " << "Recall@" << k << " " << "QPS " << "NDC" << std::endl;
+    else
+        std::cout << "ef " << "Recall@" << k << " " << "QPS " << std::endl;
+
     for (int ef = min_ef; ef <= max_ef; ef += stepsize) {
         alg_hnsw->setEf(ef);
         alg_hnsw->resetDistanceComputations();
@@ -130,18 +137,20 @@ int main(int argc, char** argv) {
         double latency = std::chrono::duration<double>(e - s).count();
         double QPS = query_elements / latency;
 
-        // size_t total_distance_computations = alg_hnsw->getDistanceComputations();
-        // double avg_distance_computations = static_cast<double>(total_distance_computations) / query_elements;
+        double avg_ndc = static_cast<double>(alg_hnsw->getDistanceComputations()) / query_elements;
 
         std::vector<double> recalls;
         double recall = compute_recall(neighbors, gt, recalls);
 
-        if (ef == min_ef)  // write header
-            write_csv_data(performance_csv, ef, recall, QPS, false);
-        else
-            write_csv_data(performance_csv, ef, recall, QPS, true);
+        bool first = (ef == min_ef);
+        write_csv_data(performance_csv, ef, recall, QPS, !first);
 
-        std::cout << ef << " " << recall << " " << QPS << std::endl;
+        if (report_ndc) {
+            write_ndc_csv_data(ndc_csv, ef, avg_ndc, recall, !first);
+            std::cout << ef << " " << recall << " " << QPS << " " << avg_ndc << std::endl;
+        } else {
+            std::cout << ef << " " << recall << " " << QPS << std::endl;
+        }
     }
 
     // delete[] data;

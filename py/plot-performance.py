@@ -9,7 +9,7 @@ import re
 import os
 
 
-datasets = ['gist']
+datasets = ['deep10m']
 # datasets = ['deep1M', 'sift', 'msmarco1M', 'msong', 'anton1m', 'imagenet1m']
 methods = ['random']
 merge_m = [2]
@@ -24,7 +24,7 @@ if __name__=="__main__":
             for m in merge_m:
                 if m == 2:
                     base_path = f'/mnt/ssd/merge_bench/{db}/{method}/performance/bi/K10'
-                    output = f'/home/jlc/hnsw-merge/performance/bi'
+                    output = f'/home/jlc/hnsw-merge/performance/independent-vs-adjacent'
                 if m > 2:
                     base_path = f'/mnt/ssd/merge_bench/{db}/{method}/performance/{m}parts/K100'
                     output = f'/home/jlc/hnsw-merge/performance/{m}parts'

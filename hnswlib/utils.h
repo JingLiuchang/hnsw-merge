@@ -200,6 +200,30 @@ void write_csv_data(const std::string& file_path, int L, double recall, double Q
     csv_file.close();
 }
 
+void write_ndc_csv_data(const std::string& file_path, int L, double NDC, double recall, bool add) {
+    bool exists = file_exists(file_path);
+
+    std::ofstream csv_file;
+
+    if (exists && add) {
+        csv_file.open(file_path, std::ios::app);
+    } else if (exists && !add) {
+        csv_file.open(file_path, std::ios::trunc);
+        csv_file << "L,NDC,recall" << std::endl;
+    } else {
+        csv_file.open(file_path);
+        csv_file << "L,NDC,recall" << std::endl;
+    }
+
+    if (!csv_file.is_open()) {
+        std::cerr << "Failed to open file: " << file_path << std::endl;
+        return;
+    }
+
+    csv_file << L << "," << NDC << "," << recall << std::endl;
+    csv_file.close();
+}
+
 /**
  * 读取assignments文件
  * @param filename assignments文件路径
