@@ -1,5 +1,7 @@
 #!/bin/bash
-source params.sh
+set -euo pipefail
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+source "${SCRIPT_DIR}/params.sh"
 
 for db in "${datasets[@]}"; do
   if [ "$db" == "sift" ]; then
@@ -95,44 +97,62 @@ for db in "${datasets[@]}"; do
       exit 1
     fi
 
-  EXECUTABLE="/home/jlc/hnsw-merge/cmake-build-debug/test_hnsw_search"
-  DATA_FILE="/mnt/ssd/merge_bench/${db}/random/bi-index-data/${db}_random_base.fvecs"
-  QUERY_FILE="/mnt/ssd/merge_bench/${db}/${db}_query.fvecs"
-  GT_FILE="/mnt/ssd/merge_bench/${db}/random/bi-index-data/${db}_random_groundtruth.ivecs"
-  OUTPUT_PATH="/mnt/ssd/merge_bench/${db}/random/performance/bi"
-  MERGED_NSG_PATH="/mnt/ssd/merge_bench/${db}/random/bi-index-merged/${db}_random_RGTM"
+  EXECUTABLE="${BUILD_DIR}/test_hnsw_search"
+  DATA_FILE="${DATA_PATH}/${db}/random/bi-index-data/${db}_random_base.fvecs"
+  QUERY_FILE="${DATA_PATH}/${db}/${db}_query.fvecs"
+  GT_FILE="${DATA_PATH}/${db}/random/bi-index-data/${db}_random_groundtruth.ivecs"
+  OUTPUT_PATH="${DATA_PATH}/${db}/random/performance/bi"
+  INDEX_PATH="${DATA_PATH}/${db}/random/bi-index-merged"
+  MERGED_NSG_PATH="${INDEX_PATH}/${db}_random_RGTM"
 
   # Fixed parameters for the search
   K=10          # Number of nearest neighbors to retrieve
-  MIN_EF=$K      # Minimum ef value
+  MIN_EF=$K     # Minimum ef value
   MAX_EF=$((K + 150))  # Maximum ef value
-  STEPSIZE=10    # Step size for increasing ef
+  STEPSIZE=5    # Step size for increasing ef
   mkdir -p "${OUTPUT_PATH}/K${K}"
 
-  # Loop through each parameter combination
-  for param in "${PARAMS[@]}"; do
-    # Parse the parameter string (G_L_S)
-    read -r G L S <<< "$param"
+  run_search_sweeps() {
+    local method=$1
+    local index_file=$2
+    local qps_csv=$3
+    local ndc_csv=$4
 
-    # Construct the input HNSW graph file name and output CSV file name
-    GRAPH_INDEX_FILE="${MERGED_NSG_PATH}_et0_ef${G}_${L}_${S}_M${M}.hnsw"
-    PERFORMANCE_CSV="${OUTPUT_PATH}/K${K}/${db}_random_RGTM_et0_ef${G}_${L}_${S}_M${M}_K${K}.csv"
-    NDC_PERFORMANCE_CSV="${OUTPUT_PATH}/K${K}/NDC_${db}_random_RGTM_et0_ef${G}_${L}_${S}_M${M}_K${K}.csv"
-    mkdir -p "${OUTPUT_PATH}/K${K}/"
-#    PERFORMANCE_CSV="${OUTPUT_PATH}/K${K}/tmp.csv"
+    echo "Running ${method} QPS sweep without metric instrumentation"
+    "$EXECUTABLE" "$DATA_FILE" "$QUERY_FILE" "$GT_FILE" "$index_file" \
+      "$K" "$MIN_EF" "$MAX_EF" "$STEPSIZE" "$qps_csv"
 
-    # Run the search command
-    echo "Running: $EXECUTABLE $DATA_FILE $QUERY_FILE $GT_FILE $GRAPH_INDEX_FILE $K $MIN_EF $MAX_EF $STEPSIZE $PERFORMANCE_CSV $NDC_PERFORMANCE_CSV"
-    $EXECUTABLE $DATA_FILE $QUERY_FILE $GT_FILE $GRAPH_INDEX_FILE $K $MIN_EF $MAX_EF $STEPSIZE $PERFORMANCE_CSV $NDC_PERFORMANCE_CSV
-#    mkdir -p "/home/jlc/pg-fast-merging/performance/${db}/"
-#    cp $PERFORMANCE_CSV "/home/jlc/pg-fast-merging/performance/${db}/"
-  done
+    echo "Running ${method} NDC sweep"
+    "$EXECUTABLE" "$DATA_FILE" "$QUERY_FILE" "$GT_FILE" "$index_file" \
+      "$K" "$MIN_EF" "$MAX_EF" "$STEPSIZE" /dev/null "$ndc_csv"
+  }
 
-#  NGM_GRAPH_INDEX_FILE="/mnt/ssd/merge_bench/${db}/random/bi-index-merged/${db}_random_NGM_et0_ef${ef}_M${M}.hnsw"
-#  NGM_PERFORMANCE_CSV="${OUTPUT_PATH}/K${K}/${db}_random_NGM_et0_ef${ef}_M${M}_K${K}.csv"
-#  $EXECUTABLE $DATA_FILE $QUERY_FILE $GT_FILE $NGM_GRAPH_INDEX_FILE $K $MIN_EF $MAX_EF $STEPSIZE $NGM_PERFORMANCE_CSV
-#  mkdir -p "/home/jlc/pg-fast-merging/performance/${db}/"
-#  cp $NGM_PERFORMANCE_CSV "/home/jlc/pg-fast-merging/performance/${db}/"
+#   # Loop through each parameter combination
+#   for param in "${PARAMS[@]}"; do
+#     # Parse the parameter string (G_L_S)
+#     read -r G L S <<< "$param"
+
+#     # Construct the input HNSW graph file name and output CSV file name
+#     GRAPH_INDEX_FILE="${MERGED_NSG_PATH}_et0_ef${G}_${L}_${S}_M${M}_adjacent-blocks.hnsw"
+#     PERFORMANCE_CSV="${OUTPUT_PATH}/K${K}/${db}_random_RGTM_et0_ef${G}_${L}_${S}_M${M}_K${K}.csv"
+#     NDC_PERFORMANCE_CSV="${OUTPUT_PATH}/K${K}/NDC_${db}_random_RGTM_et0_ef${G}_${L}_${S}_M${M}_K${K}.csv"
+#     mkdir -p "${OUTPUT_PATH}/K${K}/"
+# #    PERFORMANCE_CSV="${OUTPUT_PATH}/K${K}/tmp.csv"
+
+#     run_search_sweeps "RGTM" "$GRAPH_INDEX_FILE" "$PERFORMANCE_CSV" "$NDC_PERFORMANCE_CSV"
+# #    mkdir -p "/home/jlc/pg-fast-merging/performance/${db}/"
+# #    cp $PERFORMANCE_CSV "/home/jlc/pg-fast-merging/performance/${db}/"
+#   done
+
+#   NGM_GRAPH_INDEX_FILE="${INDEX_PATH}/${db}_random_NGM_et0_ef${ef}_M${M}.hnsw"
+#   NGM_PERFORMANCE_CSV="${OUTPUT_PATH}/K${K}/${db}_random_NGM_et0_ef${ef}_M${M}_K${K}.csv"
+#   NGM_NDC_CSV="${OUTPUT_PATH}/K${K}/NDC_${db}_random_NGM_et0_ef${ef}_M${M}_K${K}.csv"
+#   run_search_sweeps "NGM" "$NGM_GRAPH_INDEX_FILE" "$NGM_PERFORMANCE_CSV" "$NGM_NDC_CSV"
+
+  BUILD_AS_ONE_INDEX="${INDEX_PATH}/${db}_random_BuildAsOne_ef200_M${M}.hnsw"
+  BUILD_AS_ONE_CSV="${OUTPUT_PATH}/K${K}/${db}_random_BuildAsOne_ef200_M${M}_K${K}.csv"
+  BUILD_AS_ONE_NDC_CSV="${OUTPUT_PATH}/K${K}/NDC_${db}_random_BuildAsOne_ef200_M${M}_K${K}.csv"
+  run_search_sweeps "BuildAsOne" "$BUILD_AS_ONE_INDEX" "$BUILD_AS_ONE_CSV" "$BUILD_AS_ONE_NDC_CSV"
 done
 
 echo "All tests completed."

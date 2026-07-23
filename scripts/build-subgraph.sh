@@ -1,5 +1,7 @@
 #!/bin/bash
-source params.sh
+set -euo pipefail
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+source "${SCRIPT_DIR}/params.sh"
 
 for db in "${datasets[@]}"; do
   {
@@ -67,9 +69,9 @@ for db in "${datasets[@]}"; do
     for m in "${ms[@]}"; do
       # build sub-merge_bench
       if [ "$partition_method" == "kmeans" ]; then
-        python /home/jlc/hnsw-merge/py/kmeans_partition.py --num_clusters $m --db $db
+        "$PYTHON_BIN" "${REPO_PATH}/py/kmeans_partition.py" --num_clusters "$m" --db "$db"
       elif [ "$partition_method" == "random" ]; then
-        python /home/jlc/hnsw-merge/py/random_partition.py --num_clusters $m --db $db
+        "$PYTHON_BIN" "${REPO_PATH}/py/random_partition.py" --num_clusters "$m" --db "$db"
       else
         echo "Unknown partition method: $partition_method. Use 'kmeans' or 'random'."
         exit 1
@@ -77,23 +79,24 @@ for db in "${datasets[@]}"; do
 
       # Build sub-indexes
       if [ "$m" -eq 2 ]; then
-        mkdir -p "/mnt/ssd/merge_bench/${db}/${partition_method}/performance/bi"
+        mkdir -p "${DATA_PATH}/${db}/${partition_method}/performance/bi"
+        mkdir -p "${DATA_PATH}/${db}/${partition_method}/bi-index-merged"
         # sub indexes
         for part in $(seq 1 $m); do
           echo "part: $part"
-          ../cmake-build-debug/test_hnsw_index \
-          /mnt/ssd/merge_bench/${db}/${partition_method}/bi-index-data/${db}_${partition_method}P${part}_base.fvecs \
+          "${BUILD_DIR}/test_hnsw_index" \
+          "${DATA_PATH}/${db}/${partition_method}/bi-index-data/${db}_${partition_method}P${part}_base.fvecs" \
           $sub_ef \
           $sub_M \
-          /mnt/ssd/merge_bench/${db}/${partition_method}/bi-index-merged/${db}_${partition_method}P${part}_ef${sub_ef}_M${sub_M}.hnsw
+          "${DATA_PATH}/${db}/${partition_method}/bi-index-merged/${db}_${partition_method}P${part}_ef${sub_ef}_M${sub_M}.hnsw"
         done
 
         # BuildAsOne index
-        ../cmake-build-debug/test_hnsw_level0_index \
-        /mnt/ssd/merge_bench/${db}/${partition_method}/bi-index-data/${db}_${partition_method}_base.fvecs \
+        "${BUILD_DIR}/test_hnsw_level0_index" \
+        "${DATA_PATH}/${db}/${partition_method}/bi-index-data/${db}_${partition_method}_base.fvecs" \
         $ef \
         $M \
-        /mnt/ssd/merge_bench/${db}/${partition_method}/bi-index-merged/${db}_${partition_method}_BuildAsOne_ef${ef}_M${M}.hnsw
+        "${DATA_PATH}/${db}/${partition_method}/bi-index-merged/${db}_${partition_method}_BuildAsOne_ef${ef}_M${M}.hnsw"
 
         # compute groundtruth
 #        python /home/jlc/hnsw-merge/py/gt_gpu.py \
@@ -104,32 +107,32 @@ for db in "${datasets[@]}"; do
 
       elif [ "$m" -gt 2 ]; then
 
-        mkdir -p "/mnt/ssd/merge_bench/${db}/${partition_method}/performance/${m}parts"
+        mkdir -p "${DATA_PATH}/${db}/${partition_method}/performance/${m}parts"
         # sub indexes
         for part in $(seq 1 $m); do
           echo "part: $part"
-          ../cmake-build-debug/test_hnsw_index \
-          /mnt/ssd/merge_bench/${db}/${partition_method}/multi-index-data/${m}parts/${db}_${partition_method}P${part}_base.fvecs \
+          "${BUILD_DIR}/test_hnsw_index" \
+          "${DATA_PATH}/${db}/${partition_method}/multi-index-data/${m}parts/${db}_${partition_method}P${part}_base.fvecs" \
           $sub_ef \
           $sub_M \
-          /mnt/ssd/merge_bench/${db}/${partition_method}/multi-index-merged/${m}parts/${db}_${partition_method}P${part}_ef${sub_ef}_M${sub_M}.hnsw
+          "${DATA_PATH}/${db}/${partition_method}/multi-index-merged/${m}parts/${db}_${partition_method}P${part}_ef${sub_ef}_M${sub_M}.hnsw"
         done
 
         # BuildAsOne index
-        ../cmake-build-debug/test_hnsw_level0_index \
-        /mnt/ssd/merge_bench/${db}/${partition_method}/multi-index-data/${m}parts/${db}_${partition_method}_base.fvecs \
+        "${BUILD_DIR}/test_hnsw_level0_index" \
+        "${DATA_PATH}/${db}/${partition_method}/multi-index-data/${m}parts/${db}_${partition_method}_base.fvecs" \
         $ef \
         $M \
-        /mnt/ssd/merge_bench/${db}/${partition_method}/multi-index-merged/${m}parts/${db}_${partition_method}_BuildAsOne_ef${ef}_M${M}.hnsw
+        "${DATA_PATH}/${db}/${partition_method}/multi-index-merged/${m}parts/${db}_${partition_method}_BuildAsOne_ef${ef}_M${M}.hnsw"
 
         # compute groundtruth
-        python /home/jlc/hnsw-merge/py/gt_gpu.py \
-        --base_file /mnt/ssd/merge_bench/${db}/${partition_method}/multi-index-data/${m}parts/${db}_${partition_method}_base.fvecs \
-        --query_file /mnt/ssd/merge_bench/${db}/${db}_query.fvecs \
-        --gt_file /mnt/ssd/merge_bench/${db}/${partition_method}/multi-index-data/${m}parts/${db}_${partition_method}_groundtruth.ivecs \
-        --dist_file /mnt/ssd/merge_bench/${db}/${partition_method}/multi-index-data/${m}parts/${db}_${partition_method}_distance.fvecs
+        "$PYTHON_BIN" "${REPO_PATH}/py/gt_gpu.py" \
+        --base_file "${DATA_PATH}/${db}/${partition_method}/multi-index-data/${m}parts/${db}_${partition_method}_base.fvecs" \
+        --query_file "${DATA_PATH}/${db}/${db}_query.fvecs" \
+        --gt_file "${DATA_PATH}/${db}/${partition_method}/multi-index-data/${m}parts/${db}_${partition_method}_groundtruth.ivecs" \
+        --dist_file "${DATA_PATH}/${db}/${partition_method}/multi-index-data/${m}parts/${db}_${partition_method}_distance.fvecs"
       fi
     done
   done
-  } 2>&1 | tee -a /mnt/ssd/merge_bench/${db}/build-subgraph.log
+  } 2>&1 | tee -a "${DATA_PATH}/${db}/build-subgraph.log"
 done

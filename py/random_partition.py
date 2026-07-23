@@ -13,22 +13,27 @@ if __name__ == "__main__":
     num_clusters = args.num_clusters
     db = args.db
 
+    data_root = os.environ.get('DATA_PATH', '/mnt/ssd/merge_bench')
+    dataset_path = os.path.join(data_root, db)
+
     if num_clusters < 2:
         print('Error: num_clusters must be at least 2.')
         exit(1)
     elif num_clusters == 2:
-        data_path = f'/mnt/ssd/merge_bench/{db}/{db}_base.fvecs'
-        random_centroids_save_path = f'/mnt/ssd/merge_bench/{db}/random/bi-index-data/{db}_random_centroids.fvecs'
-        partition_save_path = f'/mnt/ssd/merge_bench/{db}/random/bi-index-data/'
-        base_save_path = f'/mnt/ssd/merge_bench/{db}/random/bi-index-data/{db}_random_base.fvecs'
+        data_path = os.path.join(dataset_path, f'{db}_base.fvecs')
+        partition_save_path = os.path.join(dataset_path, 'random', 'bi-index-data')
+        partition_index_path = os.path.join(dataset_path, 'random', 'bi-index-merged')
+        base_save_path = os.path.join(partition_save_path, f'{db}_random_base.fvecs')
     else:
-        data_path = f'/mnt/ssd/merge_bench/{db}/{db}_base.fvecs'
-        random_centroids_save_path = f'/mnt/ssd/merge_bench/{db}/random/multi-index-data/{db}_random_centroids.fvecs'
-        partition_save_path = f'/mnt/ssd/merge_bench/{db}/random/multi-index-data/{num_clusters}parts/'
-        partition_index_path = f'/mnt/ssd/merge_bench/{db}/random/multi-index-merged/{num_clusters}parts/'
-        base_save_path = f'/mnt/ssd/merge_bench/{db}/random/multi-index-data/{num_clusters}parts/{db}_random_base.fvecs'
-        os.makedirs(os.path.dirname(partition_save_path), exist_ok=True)
-        os.makedirs(os.path.dirname(partition_index_path), exist_ok=True)
+        data_path = os.path.join(dataset_path, f'{db}_base.fvecs')
+        partition_save_path = os.path.join(
+            dataset_path, 'random', 'multi-index-data', f'{num_clusters}parts')
+        partition_index_path = os.path.join(
+            dataset_path, 'random', 'multi-index-merged', f'{num_clusters}parts')
+        base_save_path = os.path.join(partition_save_path, f'{db}_random_base.fvecs')
+
+    os.makedirs(partition_save_path, exist_ok=True)
+    os.makedirs(partition_index_path, exist_ok=True)
 
     # Read data
     data = utils.fvecs_read(data_path)  # Shape: (N, dim)
@@ -57,9 +62,21 @@ if __name__ == "__main__":
         partition_data = data[start_idx:end_idx]
 
         # Save partition data
-        cluster_save_path = f'{partition_save_path}{db}_randomP{i+1}_base.fvecs'
+        cluster_save_path = os.path.join(
+            partition_save_path, f'{db}_randomP{i+1}_base.fvecs')
         utils.fvecs_write(cluster_save_path, partition_data)
 
         start_idx = end_idx
+
+    original_gt_path = os.path.join(dataset_path, f'{db}_groundtruth.ivecs')
+    if os.path.exists(original_gt_path):
+        original_gt = utils.ivecs_read(original_gt_path)
+        inverse_perm = np.empty(num_data, dtype=np.int64)
+        inverse_perm[perm] = np.arange(num_data, dtype=np.int64)
+        shuffled_gt = inverse_perm[original_gt].astype(np.int32, copy=False)
+        gt_save_path = os.path.join(
+            partition_save_path, f'{db}_random_groundtruth.ivecs')
+        utils.ivecs_write(gt_save_path, shuffled_gt)
+        print(f"Remapped ground truth saved to {gt_save_path}.")
 
     print("Random partitioning completed and data saved successfully.")

@@ -97,20 +97,20 @@ for T in "${Ts[@]}"; do # 并行测试
       exit 1
     fi
 
-    EXECUTABLE="/home/jlc/hnsw-merge/cmake-build-debug/test_RGTM_merge"
-    DATA_FILE="/mnt/ssd/merge_bench/${db}/random/bi-index-data/${db}_random_base.fvecs"
-    GRAPH_INDEX_FILE="/mnt/ssd/merge_bench/${db}/random/bi-index-merged/${db}_randomP"
-    MERGED_NSG_PATH="/mnt/ssd/merge_bench/${db}/random/bi-index-merged/${db}_random_RGTM"
+    EXECUTABLE="${BUILD_DIR}/test_RGTM_merge"
+    DATA_FILE="${DATA_PATH}/${db}/random/bi-index-data/${db}_random_base.fvecs"
+    GRAPH_INDEX_FILE="${DATA_PATH}/${db}/random/bi-index-merged/${db}_randomP"
+    MERGED_NSG_PATH="${DATA_PATH}/${db}/random/bi-index-merged/${db}_random_RGTM"
 
     ET=0
     RATIO=1.0
 
     # Log file to store outputs
-    # LOG_FILE="/mnt/ssd/merge_bench/${db}/random/logs/RGTM_merge.log"
+    # LOG_FILE="${DATA_PATH}/${db}/random/logs/RGTM_merge.log"
   #  mkdir -p "/home/jlc/pg-fast-merging/performance/${db}/"
   #  LOG_FILE="/home/jlc/pg-fast-merging/performance/${db}/RGTM_merge.log"
-    mkdir -p "/home/jlc/hnsw-merge/logs/${db}/"
-    LOG_FILE="/home/jlc/hnsw-merge/logs/${db}/RGTM_merge.log"
+    mkdir -p "/home/bld/research/hnsw-merge/logs/${db}/"
+    LOG_FILE="/home/bld/research/hnsw-merge/logs/${db}/RGTM_merge.log"
 
     morder="pairwise"
 
@@ -127,12 +127,12 @@ for T in "${Ts[@]}"; do # 并行测试
       $EXECUTABLE $DATA_FILE $G $L $S ${M} ${sub_ef} ${sub_M} 2 $GRAPH_INDEX_FILE $OUTPUT_FILE $ET $RATIO $morder $T 2>&1 | tee -a "$LOG_FILE"
     done
 
-    NGM_EXECUTABLE="/home/jlc/hnsw-merge/cmake-build-debug/test_NGM_merge"
-    NGM_MERGED_NSG_PATH="/mnt/ssd/merge_bench/${db}/random/bi-index-merged/${db}_random_NGM"
+    NGM_EXECUTABLE="${BUILD_DIR}/test_NGM_merge"
+    NGM_MERGED_NSG_PATH="${DATA_PATH}/${db}/random/bi-index-merged/${db}_random_NGM"
     NGM_OUTPUT_FILE="${NGM_MERGED_NSG_PATH}_et${ET}_ef${ef}_M${M}.hnsw"
 
     #echo "$NGM_EXECUTABLE $DATA_FILE $ef ${M} ${sub_ef} ${sub_M} 2 $GRAPH_INDEX_FILE $NGM_OUTPUT_FILE $ET $RATIO $morder"
-  #  $NGM_EXECUTABLE $DATA_FILE $ef ${M} ${sub_ef} ${sub_M} 2 $GRAPH_INDEX_FILE $NGM_OUTPUT_FILE $ET $RATIO $morder 2>&1 | tee -a "$LOG_FILE"
+    $NGM_EXECUTABLE $DATA_FILE $ef ${M} ${sub_ef} ${sub_M} 2 $GRAPH_INDEX_FILE $NGM_OUTPUT_FILE $ET $RATIO $morder 2>&1 | tee -a "$LOG_FILE"
 
     # Finish logging
     echo "Index construction completed at $(date)" | tee -a "$LOG_FILE"

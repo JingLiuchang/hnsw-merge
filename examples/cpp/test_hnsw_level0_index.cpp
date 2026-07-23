@@ -4,6 +4,7 @@
 #include "../../hnswlib/hnswlib.h"
 #include <thread>
 #include "../../hnswlib/utils.h"
+#include "peak_rss_monitor.h"
 
 // Multithreaded executor
 // The helper function copied from python_bindings/bindings.cpp (and that itself is copied from nmslib)
@@ -64,9 +65,9 @@ inline void ParallelFor(size_t start, size_t end, size_t numThreads, Function fn
 
 
 int main(int argc, char** argv) {
-    if (argc != 5) {
+    if (argc != 5 && argc != 6) {
         std::cout << argv[0]
-                  << "data_file ef_construction M graph_index_path"
+                  << " data_file ef_construction M graph_index_path [T]"
                   << std::endl;
         exit(-1);
     }
@@ -78,20 +79,27 @@ int main(int argc, char** argv) {
     int M = atoi(argv[3]);
     std::string graph_index_path = std::string(argv[4]);
 
-    int num_threads = 96;      // Number of threads for operations with index
+    int num_threads = argc == 6 ? atoi(argv[5]) : 72;
+    if (num_threads <= 0) {
+        std::cerr << "T must be positive" << std::endl;
+        exit(-1);
+    }
 
     // Initing index
     hnswlib::L2Space space(dim);
     hnswlib::HierarchicalNSW<float>* alg_hnsw = new hnswlib::HierarchicalNSW<float>(&space, max_elements, M, ef_construction);
 
     auto s = std::chrono::high_resolution_clock::now();
+    PeakRssMonitor memory_monitor;
     ParallelFor(0, max_elements, num_threads, [&](size_t row, size_t threadId) {
         alg_hnsw->addPoint_level0_only((void*)(data + dim * row), row); // fn(row, threadId)在threadId号线程中执行alg_hnsw->addPoint, row: partition id
     });
+    const double core_peak_rss_gb = memory_monitor.stopGb();
     auto e = std::chrono::high_resolution_clock::now();
 
     double index_time = std::chrono::duration<double>(e - s).count();
     std::cout << "Index time: " << index_time << " s; " << graph_index_path.substr(graph_index_path.find_last_of('/') + 1) << std::endl;
+    printPeakRss("BuildAsOne core peak RSS", core_peak_rss_gb);
 
     alg_hnsw->saveIndex(graph_index_path);
 

@@ -2,10 +2,12 @@
 // Created by jlc on 9/15/25.
 //
 #include "../../hnswlib/hnswlib.h"
+#include <cstdlib>
 #include <thread>
 #include "../../hnswlib/utils.h"
 #include "omp.h"
 #include "../../hnswlib/parameter.h"
+#include "peak_rss_monitor.h"
 
 // Multithreaded executor
 // The helper function copied from python_bindings/bindings.cpp (and that itself is copied from nmslib)
@@ -66,9 +68,9 @@ inline void ParallelFor(size_t start, size_t end, size_t numThreads, Function fn
 
 
 int main(int argc, char** argv) {
-    if (argc != 12 && argc != 13) {
+    if (argc < 12 || argc > 14) {
         std::cout << argv[0]
-                  << " data_file ef_construction M sub_ef sub_M graph_num graph_index_file merged_nsg_path ET ratio merge_order_selection [merge_order_file]"
+                  << " data_file ef_construction M sub_ef sub_M graph_num graph_index_file merged_nsg_path ET ratio merge_order_selection [T] [merge_order_file]"
                   << std::endl;
         exit(-1);
     }
@@ -87,8 +89,23 @@ int main(int argc, char** argv) {
     float ratio = atof(argv[10]);
     std::string merge_order = std::string(argv[11]);
     std::string merge_order_file = "None";
+    int num_threads = 72;
     if (argc == 13) {
-        merge_order_file = std::string(argv[12]);
+        char* end = nullptr;
+        long parsed_threads = std::strtol(argv[12], &end, 10);
+        if (argv[12][0] != '\0' && end != nullptr && *end == '\0') {
+            num_threads = static_cast<int>(parsed_threads);
+        } else {
+            // Preserve the legacy invocation where argv[12] was merge_order_file.
+            merge_order_file = std::string(argv[12]);
+        }
+    } else if (argc == 14) {
+        num_threads = atoi(argv[12]);
+        merge_order_file = std::string(argv[13]);
+    }
+    if (num_threads <= 0) {
+        std::cerr << "T must be positive" << std::endl;
+        exit(-1);
     }
 
     hnswlib::Parameters params;
@@ -113,16 +130,18 @@ int main(int argc, char** argv) {
         graphs[i] = hnsw;
     }
 
-    int num_threads = 8;       // Number of threads for operations with index
     omp_set_num_threads(num_threads);
 
     auto s = std::chrono::high_resolution_clock::now();
+    PeakRssMonitor memory_monitor;
     alg_hnsw->mgraph_merge(graph_num, graphs, params);
+    const double core_peak_rss_gb = memory_monitor.stopGb();
     auto e = std::chrono::high_resolution_clock::now();
 
     double merge_time = std::chrono::duration<double>(e - s).count();
 
     std::cout << "Merge time: " << merge_time << " s; " << merged_nsg_path.substr(merged_nsg_path.find_last_of('/') + 1) << std::endl;
+    printPeakRss("NGM core peak RSS", core_peak_rss_gb);
 
     alg_hnsw->saveIndex(merged_nsg_path);
 

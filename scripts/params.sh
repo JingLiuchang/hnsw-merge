@@ -1,8 +1,11 @@
 #!/bin/bash
 
-CONDA_PATH="/home/jlc/miniconda3"
-source $CONDA_PATH/etc/profile.d/conda.sh
-conda activate myenv
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+REPO_PATH="${REPO_PATH:-$(cd "${SCRIPT_DIR}/.." && pwd)}"
+DATA_PATH="${DATA_PATH:-/home/bld/datasets/merge_bench}"
+BUILD_DIR="${BUILD_DIR:-/tmp/hnsw-merge-parallelism-build}"
+PYTHON_BIN="${PYTHON_BIN:-python}"
+export REPO_PATH DATA_PATH BUILD_DIR PYTHON_BIN
 
 #sift : (1000000, 128); query : (10000, 128) 40
 #deep1M : (1000000, 96); query : (1000, 96) 40
@@ -15,7 +18,7 @@ conda activate myenv
 
 
 #datasets=("sift" "deep1M" "gist" "msmarco1M" "anton1m" "imagenet1m")
-datasets=("deep1M")
+datasets=("imagenet1m")
 partition_methods=("random")
 ms=(2)
 Ts=(72)
