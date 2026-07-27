@@ -18,7 +18,7 @@ export REPO_PATH DATA_PATH BUILD_DIR PYTHON_BIN
 
 
 #datasets=("sift" "deep1M" "gist" "msmarco1M" "anton1m" "imagenet1m")
-datasets=("imagenet1m")
+datasets=("deep1M" "gist" "msmarco1M" "anton1m" "imagenet1m")
 partition_methods=("random")
 ms=(2)
 Ts=(72)

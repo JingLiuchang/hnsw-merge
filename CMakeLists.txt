@@ -106,6 +106,12 @@ if(HNSWLIB_EXAMPLES)
     add_executable(test_RGTM_merge examples/cpp/test_RGTM_merge.cpp)
     target_link_libraries(test_RGTM_merge hnswlib ${TBB_LIBRARIES})
 
+    add_executable(test_NGMmem_merge examples/cpp/test_NGMmem_merge.cpp)
+    target_link_libraries(test_NGMmem_merge hnswlib ${TBB_LIBRARIES})
+
+    add_executable(test_RGTMmem_merge examples/cpp/test_RGTMmem_merge.cpp)
+    target_link_libraries(test_RGTMmem_merge hnswlib ${TBB_LIBRARIES})
+
     add_executable(test_NSM_merge examples/cpp/test_NSM_merge.cpp)
     target_link_libraries(test_NSM_merge hnswlib ${TBB_LIBRARIES})
 

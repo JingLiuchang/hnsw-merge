@@ -67,6 +67,28 @@ void safe_load_data(char* filename, float*& data, int& num, int& dim) {
     in.close();
 }
 
+void load_data_metadata(const char* filename, int& num, int& dim) {
+    std::ifstream in(filename, std::ios::binary);
+    if (!in.is_open()) {
+        throw std::runtime_error(std::string("Cannot open data file: ") + filename);
+    }
+
+    in.read(reinterpret_cast<char*>(&dim), sizeof(dim));
+    if (!in || dim <= 0) {
+        throw std::runtime_error(std::string("Invalid fvecs header: ") + filename);
+    }
+
+    in.seekg(0, std::ios::end);
+    std::streamoff file_size = in.tellg();
+    const std::streamoff record_size =
+        static_cast<std::streamoff>(sizeof(int32_t)) +
+        static_cast<std::streamoff>(dim) * static_cast<std::streamoff>(sizeof(float));
+    if (file_size <= 0 || file_size % record_size != 0) {
+        throw std::runtime_error(std::string("Invalid fvecs file size: ") + filename);
+    }
+    num = static_cast<int>(file_size / record_size);
+}
+
 std::vector<std::vector<unsigned>> read_ivecs(const std::string& filename) {
     std::vector<std::vector<unsigned>> vectors;
     std::ifstream fin(filename, std::ios::binary);

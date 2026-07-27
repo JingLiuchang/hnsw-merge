@@ -25,6 +25,8 @@ typedef unsigned int tableint;
 typedef unsigned int linklistsizeint;
 typedef std::pair<labeltype, unsigned> localid_graphidtype;
 
+struct GraphOnlyStorageTag {};
+
 template<typename dist_t>
 class MergeHierarchicalNSW : public HierarchicalNSW<dist_t> {
  public:
@@ -59,8 +61,12 @@ class MergeHierarchicalNSW : public HierarchicalNSW<dist_t> {
     size_t offsetData_{0}, offsetLevel0_{0}, label_offset_{ 0 };
 
     char *data_level0_memory_{nullptr};
+    char *graph_level0_memory_{nullptr};
     char **linkLists_{nullptr};
     std::vector<int> element_levels_;  // keeps level of each element
+
+    bool graph_only_storage_{false};
+    std::vector<HierarchicalNSW<dist_t>*> source_graphs_;
 
     size_t data_size_{0};
 
@@ -160,6 +166,56 @@ class MergeHierarchicalNSW : public HierarchicalNSW<dist_t> {
     }
 
 
+    MergeHierarchicalNSW(
+        SpaceInterface<dist_t> *s,
+        size_t max_elements,
+        size_t M,
+        size_t ef_construction,
+        GraphOnlyStorageTag,
+        size_t random_seed = 100)
+        : HierarchicalNSW<dist_t>(s),
+            link_list_locks_(max_elements),
+            element_levels_(max_elements) {
+        graph_only_storage_ = true;
+        max_elements_ = max_elements;
+        num_deleted_ = 0;
+        data_size_ = s->get_data_size();
+        fstdistfunc_ = s->get_dist_func();
+        dist_func_param_ = s->get_dist_func_param();
+        if (M <= 10000) {
+            M_ = M;
+        } else {
+            HNSWERR << "warning: M parameter exceeds 10000 which may lead to adverse effects." << std::endl;
+            HNSWERR << "         Cap to 10000 will be applied for the rest of the processing." << std::endl;
+            M_ = 10000;
+        }
+        maxM_ = M_;
+        maxM0_ = M_ * 2;
+        ef_construction_ = std::max(ef_construction, M_);
+        ef_ = 10;
+
+        level_generator_.seed(random_seed);
+        update_probability_generator_.seed(random_seed + 1);
+
+        size_links_level0_ = maxM0_ * sizeof(tableint) + sizeof(linklistsizeint);
+        size_data_per_element_ = size_links_level0_ + data_size_ + sizeof(labeltype);
+        offsetData_ = size_links_level0_;
+        label_offset_ = size_links_level0_ + data_size_;
+        offsetLevel0_ = 0;
+
+        graph_level0_memory_ = static_cast<char *>(malloc(max_elements_ * size_links_level0_));
+        if (graph_level0_memory_ == nullptr)
+            throw std::runtime_error("Not enough memory for graph-only level0 storage");
+
+        cur_element_count = 0;
+        enterpoint_node_ = -1;
+        maxlevel_ = -1;
+        size_links_per_element_ = maxM_ * sizeof(tableint) + sizeof(linklistsizeint);
+        mult_ = 1 / log(1.0 * M_);
+        revSize_ = 1.0 / mult_;
+    }
+
+
     ~MergeHierarchicalNSW() {
         clear();
     }
@@ -167,6 +223,8 @@ class MergeHierarchicalNSW : public HierarchicalNSW<dist_t> {
     void clear() {
         free(data_level0_memory_);
         data_level0_memory_ = nullptr;
+        free(graph_level0_memory_);
+        graph_level0_memory_ = nullptr;
         for (tableint i = 0; i < cur_element_count; i++) {
             if (element_levels_[i] > 0)
                 free(linkLists_[i]);
@@ -175,6 +233,7 @@ class MergeHierarchicalNSW : public HierarchicalNSW<dist_t> {
         linkLists_ = nullptr;
         cur_element_count = 0;
         visited_list_pool_.reset(nullptr);
+        source_graphs_.clear();
     }
 
 
@@ -199,6 +258,12 @@ class MergeHierarchicalNSW : public HierarchicalNSW<dist_t> {
 
 
     inline labeltype getExternalLabel(tableint internal_id) const {
+        if (graph_only_storage_) {
+            std::pair<size_t, tableint> source = getGraphOnlySource(internal_id);
+            return static_cast<labeltype>(
+                globalid_offset[source.first] +
+                source_graphs_[source.first]->getExternalLabel(source.second));
+        }
         labeltype return_label;
         memcpy(&return_label, (data_level0_memory_ + internal_id * size_data_per_element_ + label_offset_), sizeof(labeltype));
         return return_label;
@@ -206,17 +271,43 @@ class MergeHierarchicalNSW : public HierarchicalNSW<dist_t> {
 
 
     inline void setExternalLabel(tableint internal_id, labeltype label) const {
+        if (graph_only_storage_) {
+            if (label != getExternalLabel(internal_id))
+                throw std::runtime_error("Graph-only merged-index labels are derived from input indexes");
+            return;
+        }
         memcpy((data_level0_memory_ + internal_id * size_data_per_element_ + label_offset_), &label, sizeof(labeltype));
     }
 
 
     inline labeltype *getExternalLabeLp(tableint internal_id) const {
+        if (graph_only_storage_)
+            throw std::runtime_error("Graph-only merged indexes do not store labels in memory");
         return (labeltype *) (data_level0_memory_ + internal_id * size_data_per_element_ + label_offset_);
     }
 
 
     inline char *getDataByInternalId(tableint internal_id) const {
+        if (graph_only_storage_) {
+            std::pair<size_t, tableint> source = getGraphOnlySource(internal_id);
+            return source_graphs_[source.first]->getDataByInternalId(source.second);
+        }
         return (data_level0_memory_ + internal_id * size_data_per_element_ + offsetData_);
+    }
+
+
+    inline std::pair<size_t, tableint> getGraphOnlySource(tableint internal_id) const {
+        if (internal_id >= cur_element_count || source_graphs_.empty() || globalid_offset.empty())
+            throw std::runtime_error("Invalid graph-only merged-index source lookup");
+        typename std::vector<size_t>::const_iterator offset_it =
+            std::upper_bound(globalid_offset.begin(), globalid_offset.end(), internal_id);
+        if (offset_it == globalid_offset.begin())
+            throw std::runtime_error("Unable to locate graph-only merged-index source");
+        size_t graph_id = static_cast<size_t>(offset_it - globalid_offset.begin() - 1);
+        tableint local_id = static_cast<tableint>(internal_id - globalid_offset[graph_id]);
+        if (graph_id >= source_graphs_.size() || local_id >= source_graphs_[graph_id]->cur_element_count)
+            throw std::runtime_error("Graph-only merged-index source lookup is out of range");
+        return std::make_pair(graph_id, local_id);
     }
 
 
@@ -500,6 +591,9 @@ class MergeHierarchicalNSW : public HierarchicalNSW<dist_t> {
 
 
     linklistsizeint *get_linklist0(tableint internal_id) const {
+        if (graph_only_storage_)
+            return reinterpret_cast<linklistsizeint *>(
+                graph_level0_memory_ + internal_id * size_links_level0_);
         return (linklistsizeint *) (data_level0_memory_ + internal_id * size_data_per_element_ + offsetLevel0_);
     }
 
@@ -823,6 +917,10 @@ class MergeHierarchicalNSW : public HierarchicalNSW<dist_t> {
     }
 
     void saveIndex(const std::string &location) {
+        if (graph_only_storage_) {
+            saveGraphOnlyIndex(location);
+            return;
+        }
         std::ofstream output(location, std::ios::binary);
         std::streampos position;
 
@@ -849,6 +947,49 @@ class MergeHierarchicalNSW : public HierarchicalNSW<dist_t> {
             if (linkListSize)
                 output.write(linkLists_[i], linkListSize);
         }
+        output.close();
+    }
+
+
+    void saveGraphOnlyIndex(const std::string &location) {
+        if (source_graphs_.empty() || cur_element_count != max_elements_)
+            throw std::runtime_error("Graph-only merged index is not initialized");
+
+        std::ofstream output(location, std::ios::binary);
+        if (!output.is_open())
+            throw std::runtime_error("Cannot open graph-only merged index output: " + location);
+
+        writeBinaryPOD(output, offsetLevel0_);
+        writeBinaryPOD(output, max_elements_);
+        writeBinaryPOD(output, cur_element_count);
+        writeBinaryPOD(output, size_data_per_element_);
+        writeBinaryPOD(output, label_offset_);
+        writeBinaryPOD(output, offsetData_);
+        writeBinaryPOD(output, maxlevel_);
+        writeBinaryPOD(output, enterpoint_node_);
+        writeBinaryPOD(output, maxM_);
+
+        writeBinaryPOD(output, maxM0_);
+        writeBinaryPOD(output, M_);
+        writeBinaryPOD(output, mult_);
+        writeBinaryPOD(output, ef_construction_);
+
+        std::vector<char> record(size_data_per_element_);
+        for (tableint internal_id = 0; internal_id < cur_element_count; ++internal_id) {
+            std::fill(record.begin(), record.end(), 0);
+            memcpy(record.data(), get_linklist0(internal_id), size_links_level0_);
+            memcpy(record.data() + offsetData_, getDataByInternalId(internal_id), data_size_);
+            labeltype label = getExternalLabel(internal_id);
+            memcpy(record.data() + label_offset_, &label, sizeof(labeltype));
+            output.write(record.data(), static_cast<std::streamsize>(record.size()));
+        }
+
+        const unsigned int link_list_size = 0;
+        for (tableint internal_id = 0; internal_id < cur_element_count; ++internal_id)
+            writeBinaryPOD(output, link_list_size);
+
+        if (!output.good())
+            throw std::runtime_error("Failed while writing graph-only merged index: " + location);
         output.close();
     }
 
@@ -1577,6 +1718,20 @@ class MergeHierarchicalNSW : public HierarchicalNSW<dist_t> {
         }
     }
 
+    void initialize_graph_only_sources(std::vector<HierarchicalNSW<dist_t>*> graphs) {
+        source_graphs_ = graphs;
+        globalid_offset.resize(graphs.size());
+        size_t global_id_offset = 0;
+        for (size_t graph_id = 0; graph_id < graphs.size(); ++graph_id) {
+            if (graphs[graph_id]->cur_element_count != graphs[graph_id]->max_elements_)
+                throw std::runtime_error("Graph-only merge requires fully populated input indexes");
+            globalid_offset[graph_id] = global_id_offset;
+            global_id_offset += graphs[graph_id]->cur_element_count;
+        }
+        if (global_id_offset != max_elements_)
+            throw std::runtime_error("Graph-only merge input size does not match output size");
+    }
+
     void pairwise_merge_order(unsigned m, std::vector<std::pair<unsigned, unsigned>>& merge_order) {
         merge_order.clear();
         for (unsigned i = 0; i < m; ++i) {
@@ -1636,6 +1791,41 @@ class MergeHierarchicalNSW : public HierarchicalNSW<dist_t> {
         }
     }
 
+    void init_merge_graph_level0_graph_only(std::vector<HierarchicalNSW<dist_t>*> graphs) {
+        cur_element_count = max_elements_;
+        maxlevel_ = std::numeric_limits<int>::min();
+
+        for (unsigned graph_id = 0; graph_id < graphs.size(); ++graph_id) {
+            HierarchicalNSW<dist_t>* graph = graphs[graph_id];
+            if (graph->maxlevel_ > maxlevel_) {
+                maxlevel_ = graph->maxlevel_;
+                labeltype graph_ep = graph->getExternalLabel(graph->enterpoint_node_);
+                enterpoint_node_ = getGlobalidbyLocalid(graph_ep, graph_id);
+            }
+        }
+        maxlevel_ = 0;
+
+        for (unsigned graph_id = 0; graph_id < graphs.size(); ++graph_id) {
+            HierarchicalNSW<dist_t>* graph = graphs[graph_id];
+            for (tableint local_id = 0; local_id < graph->cur_element_count; ++local_id) {
+                tableint global_id = static_cast<tableint>(globalid_offset[graph_id] + local_id);
+                linklistsizeint* output_links = get_linklist0(global_id);
+                linklistsizeint* input_links = graph->get_linklist0(local_id);
+                memset(output_links, 0, size_links_level0_);
+
+                size_t input_count = graph->getListCount(input_links);
+                size_t output_count = std::min(input_count, maxM0_);
+                setListCount(output_links, output_count);
+                tableint* output_neighbors = reinterpret_cast<tableint *>(output_links + 1);
+                tableint* input_neighbors = reinterpret_cast<tableint *>(input_links + 1);
+                for (size_t neighbor_index = 0; neighbor_index < output_count; ++neighbor_index) {
+                    output_neighbors[neighbor_index] = static_cast<tableint>(
+                        input_neighbors[neighbor_index] + globalid_offset[graph_id]);
+                }
+            }
+        }
+    }
+
     void mgraph_merge(unsigned m, std::vector<HierarchicalNSW<dist_t>*> graphs, const Parameters &parameters) // 直接update MergeHierarchicalNSW
     {
         std::string method = parameters.Get<std::string>("method");
@@ -1656,8 +1846,13 @@ class MergeHierarchicalNSW : public HierarchicalNSW<dist_t> {
 
         // 初始化G
         auto local_timer_s = std::chrono::high_resolution_clock::now();
-        initialize_mergeid_lookup(graphs);
-        init_merge_graph_level0(graphs);
+        if (graph_only_storage_) {
+            initialize_graph_only_sources(graphs);
+            init_merge_graph_level0_graph_only(graphs);
+        } else {
+            initialize_mergeid_lookup(graphs);
+            init_merge_graph_level0(graphs);
+        }
         auto local_timer_e = std::chrono::high_resolution_clock::now();
         if (parameters.Get<bool>("print")) {
             std::chrono::duration<double> local_duration = local_timer_e - local_timer_s;
@@ -1747,14 +1942,14 @@ class MergeHierarchicalNSW : public HierarchicalNSW<dist_t> {
         }
 
         // start merging
-        if (method == "NGM")
+        if (method == "NGM" || method == "NGMmem")
         {
             for (auto&& p : merge_order) { // pairwise merge
                 NGM_merge_into_later(graphs, p.first, p.second, ef_construction_, parameters); // first merge into second
                 // NGM_merge_into_later(graphs, p.second, p.first, ef_construction_, parameters); // second merge into first
             }
         }
-        else if (method == "RGTM")
+        else if (method == "RGTM" || method == "RGTMmem")
         {
             for (auto&& p : merge_order) { // pairwise merge
                 RGTM_merge_into_later(graphs, p.first, p.second, parameters); // first merge into second
@@ -3738,4 +3933,3 @@ class MergeHierarchicalNSW : public HierarchicalNSW<dist_t> {
     }
 };
 }  // namespace hnswlib
-
